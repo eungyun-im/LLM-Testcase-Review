@@ -55,6 +55,11 @@ All three are computed by scripts. A person decides only which mutants are equiv
 
 The spec lists 5 boundaries, so there are 15 boundary points. Recall is reported two ways. **Simple** counts a point when its value appears in a test. **Strict** also requires the other inputs to let that boundary decide the output: 30.0 km/h counts only if an obstacle is in range.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/boundary-points-dark.svg">
+  <img src="docs/img/boundary-points-light.svg" alt="The 15 boundary points of the AEB-lite spec: three per threshold" width="760">
+</picture>
+
 Detection is measured only with **valid** tests. A wrong test fails everywhere and would otherwise count as detecting every defect.
 
 ## Feedback refinement
@@ -101,6 +106,13 @@ FR and its ablations start from the same B1 output in each repetition, so they a
 | Hand-seeded (F1 to F7) | 7 | Scoring only |
 | Mutants, evaluation half | 12 | Scoring only |
 | Mutants, feedback half | 13 | Mutation feedback only |
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/mutant-split-dark.svg">
+  <img src="docs/img/mutant-split-light.svg" alt="The 25 mutants by operator: 13 in the feedback set and 12 in the evaluation set" width="760">
+</picture>
+
+Both figures describe the experiment setup, not results. They are regenerated with `python -m tools.figures`.
 
 Seeded defects are mistakes a developer could plausibly make: an exclusive comparison at a threshold, a missing range check, "no obstacle" treated as distance zero, checks in the wrong order, a distance rounded before comparison. See [`sut/defects.py`](sut/defects.py).
 

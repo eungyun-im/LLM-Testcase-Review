@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 354" width="760" height="354" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img">
+<rect x="0.0" y="0.0" width="760.0" height="354.0" rx="8" fill="#fcfcfb" fill-opacity="1.0"/>
+<text x="24.0" y="30.0" font-size="15" font-weight="600" text-anchor="start" fill="#0b0b0b">25 mutants, split by operator: 13 for feedback, 12 held out for scoring</text>
+<text x="24.0" y="50.0" font-size="12" font-weight="400" text-anchor="start" fill="#52514e">A test set is never scored on the mutants it was shown as feedback</text>
+<text x="24.0" y="98.0" font-size="13" font-weight="600" text-anchor="start" fill="#0b0b0b">Constant</text>
+<text x="24.0" y="114.0" font-size="11" font-weight="400" text-anchor="start" fill="#52514e">30.0 becomes 31.0</text>
+<path d="M250.0,86.0 h276.0 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-276.0 z" fill="#2a78d6"/>
+<text x="540.0" y="97.0" font-size="11" font-weight="400" text-anchor="start" fill="#52514e">5</text>
+<path d="M250.0,102.0 h276.0 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-276.0 z" fill="#eb6834"/>
+<text x="540.0" y="113.0" font-size="11" font-weight="400" text-anchor="start" fill="#52514e">5</text>
+<text x="24.0" y="152.0" font-size="13" font-weight="600" text-anchor="start" fill="#0b0b0b">Return value</text>
+<text x="24.0" y="168.0" font-size="11" font-weight="400" text-anchor="start" fill="#52514e">BRAKE becomes NO_ACTION</text>
+<path d="M250.0,140.0 h220.0 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-220.0 z" fill="#2a78d6"/>
+<text x="484.0" y="151.0" font-size="11" font-weight="400" text-anchor="start" fill="#52514e">4</text>
+<path d="M250.0,156.0 h220.0 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-220.0 z" fill="#eb6834"/>
+<text x="484.0" y="167.0" font-size="11" font-weight="400" text-anchor="start" fill="#52514e">4</text>
+<text x="24.0" y="206.0" font-size="13" font-weight="600" text-anchor="start" fill="#0b0b0b">Comparison</text>
+<text x="24.0" y="222.0" font-size="11" font-weight="400" text-anchor="start" fill="#52514e">&gt;= becomes &gt;</text>
+<path d="M250.0,194.0 h164.0 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-164.0 z" fill="#2a78d6"/>
+<text x="428.0" y="205.0" font-size="11" font-weight="400" text-anchor="start" fill="#52514e">3</text>
+<path d="M250.0,210.0 h164.0 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-164.0 z" fill="#eb6834"/>
+<text x="428.0" y="221.0" font-size="11" font-weight="400" text-anchor="start" fill="#52514e">3</text>
+<text x="24.0" y="260.0" font-size="13" font-weight="600" text-anchor="start" fill="#0b0b0b">Logic</text>
+<text x="24.0" y="276.0" font-size="11" font-weight="400" text-anchor="start" fill="#52514e">and becomes or</text>
+<path d="M250.0,248.0 h52.0 a4,4 0 0 1 4,4 v6.0 a4,4 0 0 1 -4,4 h-52.0 z" fill="#2a78d6"/>
+<text x="316.0" y="259.0" font-size="11" font-weight="400" text-anchor="start" fill="#52514e">1</text>
+<text x="260.0" y="275.0" font-size="11" font-weight="400" text-anchor="start" fill="#52514e">0</text>
+<rect x="24.0" y="305.0" width="12.0" height="12.0" rx="2" fill="#2a78d6" fill-opacity="1.0"/>
+<text x="42.0" y="315.0" font-size="11" font-weight="400" text-anchor="start" fill="#52514e">Feedback set: shown to the model as surviving mutants</text>
+<rect x="24.0" y="325.0" width="12.0" height="12.0" rx="2" fill="#eb6834" fill-opacity="1.0"/>
+<text x="42.0" y="335.0" font-size="11" font-weight="400" text-anchor="start" fill="#52514e">Evaluation set: used only for the detection rate</text>
+</svg>
