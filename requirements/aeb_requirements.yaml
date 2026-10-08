@@ -1,34 +1,59 @@
 system: AEB-lite
+description: >
+  Decision function of a simplified automatic emergency braking feature.
+  It takes one sample of three inputs and returns one action.
+
 inputs:
-  speed_kph:     {min: 0.0, max: 250.0, step: 0.1}
-  obstacle_m:    {min: 0.0, step: 0.1, nullable: true}
-  sensor_age_ms: {min: 0, step: 1}
+  speed_kph:     {type: float, unit: km/h, resolution: 0.1}
+  obstacle_m:    {type: float, unit: m, resolution: 0.1, nullable: true}
+  sensor_age_ms: {type: int, unit: ms, resolution: 1}
+
 outputs: [BRAKE, NO_ACTION, FAULT]
+
+# Stage 1 covers the stateless requirements. REQ-04 (fault latch and recovery)
+# needs timed sequences and belongs to stage 2.
 requirements:
   - id: REQ-01
-    text: Brake when speed is at least 30 km/h, an obstacle is within 20 m, and sensor data is valid.
-    expected: BRAKE
-    boundaries:
-      - {input: speed_kph, value: 30.0}
-      - {input: obstacle_m, value: 20.0}
+    text: When speed is at least 30 km/h, an obstacle is detected within 20 m, and sensor data is valid, the output is BRAKE.
   - id: REQ-02
-    text: Take no action when speed is below 30 km/h.
-    expected: NO_ACTION
-    boundaries:
-      - {input: speed_kph, value: 30.0}
+    text: When speed is below 30 km/h and the inputs are valid, the output is NO_ACTION, with or without an obstacle.
   - id: REQ-03
-    text: Report a fault when sensor data is 200 ms old or older.
-    expected: FAULT
-    boundaries:
-      - {input: sensor_age_ms, value: 200}
-  - id: REQ-04
-    text: In the fault state, return to normal after the sensor has been healthy for 1 s.
-    expected: NORMAL
-    boundaries:
-      - {input: healthy_duration_ms, value: 1000}
+    text: When sensor data is 200 ms old or older, the output is FAULT.
   - id: REQ-05
-    text: Report a fault when speed is outside 0 to 250 km/h.
-    expected: FAULT
-    boundaries:
-      - {input: speed_kph, value: 0.0}
-      - {input: speed_kph, value: 250.0}
+    text: When speed is below 0 km/h or above 250 km/h, the output is FAULT.
+
+notes:
+  - obstacle_m is empty when no obstacle is detected. No obstacle never produces BRAKE.
+  - An invalid speed (REQ-05) is checked before sensor age (REQ-03), and both before the brake condition.
+
+# Each boundary yields three points: value - resolution, value, value + resolution.
+# strict_when lists what the other inputs must satisfy for the point to actually
+# expose the boundary (used by the strict recall criterion).
+boundaries:
+  - id: B-BRAKE-SPEED
+    input: speed_kph
+    value: 30.0
+    strict_when:
+      obstacle_m: {max: 20.0, not_null: true}
+      sensor_age_ms: {max: 199}
+  - id: B-DETECT-RANGE
+    input: obstacle_m
+    value: 20.0
+    strict_when:
+      speed_kph: {min: 30.0, max: 250.0}
+      sensor_age_ms: {max: 199}
+  - id: B-SENSOR-TIMEOUT
+    input: sensor_age_ms
+    value: 200
+    strict_when:
+      speed_kph: {min: 0.0, max: 250.0}
+  - id: B-SPEED-MIN
+    input: speed_kph
+    value: 0.0
+    strict_when:
+      sensor_age_ms: {max: 199}
+  - id: B-SPEED-MAX
+    input: speed_kph
+    value: 250.0
+    strict_when:
+      sensor_age_ms: {max: 199}
