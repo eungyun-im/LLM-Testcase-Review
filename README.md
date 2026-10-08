@@ -111,3 +111,23 @@ pytest -v
 ```
 
 The automatic checks and their tests run offline. Only `tcgen/generate.py` needs an LLM API key.
+
+## Roadmap
+
+**Core**
+
+- [ ] Automatic checks with tests: schema, traceability, duplicates, boundary coverage, range
+- [ ] Candidate generation from the requirement spec
+- [ ] Review application and suite export
+- [ ] Metrics report
+- [ ] First fully reviewed run, with results published here
+
+**Next**
+
+- [ ] Model and prompt comparison on acceptance rate and boundary recall
+
+**Later**
+
+- [ ] Requirement quality checks: ambiguity, missing conditions, contradictions
+- [ ] Defect report drafting from failed tests and logs
+- [ ] Run on the diagnostic and security requirements of [ecu-quality-gate](https://github.com/eungyun-im/ecu-quality-gate)
