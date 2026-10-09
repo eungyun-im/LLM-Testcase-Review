@@ -37,6 +37,8 @@ class Spec:
     requirements: tuple
     notes: tuple
     boundaries: tuple
+    conditions: tuple = ()
+    partitions: tuple = ()
 
     def points(self):
         """Three points per boundary: value - resolution, value, value + resolution."""
@@ -55,6 +57,38 @@ class Spec:
                     )
                 )
         return result
+
+    def holds(self, condition, test):
+        """Decide one atomic condition for the inputs of a test."""
+        value = test.value_of(condition["input"])
+        if condition["op"] == "present":
+            return value is not None
+        if value is None:
+            return False
+        target = condition["value"]
+        return {
+            "<": value < target, "<=": value <= target, ">": value > target, ">=": value >= target,
+        }[condition["op"]]
+
+    def facts(self, test):
+        """{condition id: True or False} for the inputs of a test."""
+        return {c["id"]: self.holds(c, test) for c in self.conditions}
+
+    def fact_text(self, test):
+        """The conditions as sentences with yes or no, for a prompt."""
+        facts = self.facts(test)
+        return "; ".join(f"{c['text']}: {'yes' if facts[c['id']] else 'no'}" for c in self.conditions)
+
+    def partition_of(self, test):
+        """ID of the input class the inputs of a test belong to, or None."""
+        facts = self.facts(test)
+        for partition in self.partitions:
+            if all(facts[cid] == wanted for cid, wanted in partition["when"].items()):
+                return partition["id"]
+        return None
+
+    def condition_text(self):
+        return "\n".join(f"- {c['text']}" for c in self.conditions)
 
     def requirement_text(self):
         lines = [f"{r['id']}: {r['text']}" for r in self.requirements]
@@ -84,4 +118,6 @@ def load_spec(path=AEB_SPEC):
         requirements=tuple(raw["requirements"]),
         notes=tuple(raw.get("notes") or ()),
         boundaries=tuple(raw["boundaries"]),
+        conditions=tuple(raw.get("conditions") or ()),
+        partitions=tuple(raw.get("partitions") or ()),
     )

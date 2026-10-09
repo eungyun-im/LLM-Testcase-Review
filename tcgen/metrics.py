@@ -85,3 +85,11 @@ def detection(valid_tests, versions, excluded=()):
     detected = {vid: detects(valid_tests, decide) for vid, decide in considered.items()}
     rate = sum(detected.values()) / len(detected) if detected else 0.0
     return rate, detected
+
+
+def partition_coverage(tests, spec):
+    """Share of the input classes of the spec that at least one test falls into."""
+    if not spec.partitions:
+        return 0.0
+    covered = {spec.partition_of(test) for test in tests}
+    return sum(p["id"] in covered for p in spec.partitions) / len(spec.partitions)

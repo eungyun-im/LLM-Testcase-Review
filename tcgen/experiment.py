@@ -4,8 +4,8 @@
     python -m tcgen.experiment --client anthropic --reps 10 --db data/results.db
     python -m tcgen.experiment --client openai --model qwen2.5:7b --reps 3 --db results/pilot.db
 
-Per repetition, B0 and B1 are generated once. FR and its three ablations all
-start from that repetition's B1 test set, so they can be compared pairwise.
+Per repetition, B0 and B1 are generated once. FR and its variants all start
+from that repetition's B1 test set, so they can be compared pairwise.
 """
 
 import argparse
@@ -25,9 +25,12 @@ from tcgen.spec import ROOT, load_spec
 HUMAN_BASELINE = ROOT / "data" / "human" / "aeb_baseline.csv"
 FR_VARIANTS = {
     "FR": ALL_CHECKS,
-    "FR-boundary": ALL_CHECKS - {"boundary"},
+    # Ablations: FR with one kind of feedback removed
+    "FR-coverage": ALL_CHECKS - {"boundary", "partition"},
     "FR-cross": ALL_CHECKS - {"cross"},
     "FR-mutation": ALL_CHECKS - {"mutation"},
+    # FR with the cross-check in its earlier, ungrounded form
+    "FR-self": (ALL_CHECKS - {"cross"}) | {"cross-self"},
 }
 CONDITIONS = ["B0", "B1", *FR_VARIANTS]
 
@@ -78,6 +81,7 @@ def evaluate(context, tests, format_errors=0, calls=(), rounds=0):
             "error_rate": len(wrong) / len(tests) if tests else 0.0,
             "boundary_recall_simple": simple,
             "boundary_recall_strict": strict,
+            "partition_coverage": metrics.partition_coverage(tests, context.spec),
             "detection_seeded": seeded_rate,
             "detection_mutants": mutant_rate,
             "llm_calls": len(calls),

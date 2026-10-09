@@ -18,6 +18,7 @@ Findings:
 
 How to revise:
 
+- For an input class with no test, add a test whose inputs fall into that class.
 - For a missing boundary point, add a test that uses that value and choose the other inputs so that the boundary decides the output.
 - For a disputed expected result, work the case out again from the requirement text. Change it only if the requirement supports the change.
 - For a code change that no test would notice, add a test whose output would differ if the code were changed that way.
@@ -26,3 +27,5 @@ How to revise:
 Return the complete revised test set as CSV with exactly this header and nothing after the table:
 
 tc_id,req_id,speed_kph,obstacle_m,sensor_age_ms,expected
+
+Every row has exactly six comma-separated fields. The three input columns hold plain numbers, without units and without names. No extra columns and no remarks.

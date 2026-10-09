@@ -19,6 +19,7 @@ def build_prompt(level, spec):
         inputs=spec.input_text(),
         outputs=", ".join(spec.outputs),
         boundaries=spec.boundary_text(),
+        conditions=spec.condition_text(),
     )
 
 

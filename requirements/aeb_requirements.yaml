@@ -57,3 +57,40 @@ boundaries:
     value: 250.0
     strict_when:
       sensor_age_ms: {max: 199}
+
+# The atomic conditions the requirements are built from. A program can decide
+# each of them for the inputs of a test. They are used for the input class
+# check and to ground the cross-check. None of them says what the output is.
+conditions:
+  - {id: C-SPEED-LOW,   text: speed is below 0 km/h,              input: speed_kph,     op: "<",  value: 0.0}
+  - {id: C-SPEED-HIGH,  text: speed is above 250 km/h,            input: speed_kph,     op: ">",  value: 250.0}
+  - {id: C-SENSOR-OLD,  text: sensor data is 200 ms old or older, input: sensor_age_ms, op: ">=", value: 200}
+  - {id: C-SPEED-BRAKE, text: speed is at least 30 km/h,          input: speed_kph,     op: ">=", value: 30.0}
+  - {id: C-OBSTACLE,    text: an obstacle is detected,            input: obstacle_m,    op: present}
+  - {id: C-IN-RANGE,    text: the obstacle is within 20 m,        input: obstacle_m,    op: "<=", value: 20.0}
+
+# Input classes (equivalence partitions): combinations of conditions that the
+# requirements treat differently. Every input belongs to exactly one class.
+# Outputs are deliberately not listed.
+partitions:
+  - id: P-SPEED-LOW
+    text: speed below the valid range
+    when: {C-SPEED-LOW: true}
+  - id: P-SPEED-HIGH
+    text: speed above the valid range
+    when: {C-SPEED-HIGH: true}
+  - id: P-SENSOR-OLD
+    text: valid speed, sensor data 200 ms old or older
+    when: {C-SPEED-LOW: false, C-SPEED-HIGH: false, C-SENSOR-OLD: true}
+  - id: P-SLOW
+    text: valid speed below 30 km/h, fresh sensor data
+    when: {C-SPEED-LOW: false, C-SENSOR-OLD: false, C-SPEED-BRAKE: false}
+  - id: P-NO-OBSTACLE
+    text: valid speed of at least 30 km/h, fresh sensor data, no obstacle detected
+    when: {C-SPEED-HIGH: false, C-SENSOR-OLD: false, C-SPEED-BRAKE: true, C-OBSTACLE: false}
+  - id: P-FAR
+    text: valid speed of at least 30 km/h, fresh sensor data, obstacle farther than 20 m
+    when: {C-SPEED-HIGH: false, C-SENSOR-OLD: false, C-SPEED-BRAKE: true, C-OBSTACLE: true, C-IN-RANGE: false}
+  - id: P-NEAR
+    text: valid speed of at least 30 km/h, fresh sensor data, obstacle within 20 m
+    when: {C-SPEED-HIGH: false, C-SENSOR-OLD: false, C-SPEED-BRAKE: true, C-OBSTACLE: true, C-IN-RANGE: true}

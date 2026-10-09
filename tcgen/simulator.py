@@ -88,6 +88,15 @@ class SimulatedLLM:
         for point in meta.get("missing", []):
             number += 1
             tests.append(self._case(number, "REQ-01", self._point_inputs(point), 0.05))
+        for partition in meta.get("classes", []):
+            probe = next(
+                (p for p in self._probes
+                 if self.spec.partition_of(TestCase("probe", "", *p, "")) == partition["id"]),
+                None,
+            )
+            if probe is not None:
+                number += 1
+                tests.append(self._case(number, "REQ-01", probe, 0.05))
         for mutant in meta.get("survivors", []):
             probe = distinguishing_input(mutant.load(), self.reference, self._probes)
             if probe is not None and self.rng.random() < 0.7:

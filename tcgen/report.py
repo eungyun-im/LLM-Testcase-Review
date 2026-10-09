@@ -9,23 +9,27 @@ from sut.defects import SEEDED
 from tcgen import stats, store
 from tcgen.spec import ROOT
 
-ORDER = ["B0", "B1", "FR", "FR-boundary", "FR-cross", "FR-mutation", "H"]
+ORDER = ["B0", "B1", "FR", "FR-coverage", "FR-boundary", "FR-cross", "FR-mutation", "FR-self", "H"]
 LABELS = {
     "B0": "B0 single shot",
     "B1": "B1 enhanced prompt",
     "FR": "FR feedback refinement",
+    "FR-coverage": "FR without coverage feedback",
     "FR-boundary": "FR without boundary feedback",
     "FR-cross": "FR without cross-check",
     "FR-mutation": "FR without mutation feedback",
+    "FR-self": "FR with ungrounded cross-check",
     "H": "H human design",
 }
 COMPARISONS = [
     # (first, second, paired)
     ("B0", "B1", False),
     ("FR", "B1", True),
+    ("FR", "FR-coverage", True),
     ("FR", "FR-boundary", True),
     ("FR", "FR-cross", True),
     ("FR", "FR-mutation", True),
+    ("FR", "FR-self", True),
 ]
 MAIN_METRICS = ["error_rate", "detection_seeded", "detection_mutants"]
 SIMULATED_WARNING = (
@@ -66,15 +70,15 @@ def models_line(conn):
 
 def table_summary(conn, system):
     lines = [
-        "| Condition | Runs | Tests | Rows rejected | Error rate | Boundary recall (simple / strict) | Detection: seeded | Detection: mutants | LLM calls |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "| Condition | Runs | Tests | Rows rejected | Error rate | Boundary recall (simple / strict) | Input classes | Detection: seeded | Detection: mutants | LLM calls |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for condition in ORDER:
         values = {
             name: list(store.metric_values(conn, system, condition, name).values())
             for name in (
                 "generated", "format_errors", "error_rate", "boundary_recall_simple", "boundary_recall_strict",
-                "detection_seeded", "detection_mutants", "llm_calls",
+                "partition_coverage", "detection_seeded", "detection_mutants", "llm_calls",
             )
         }
         if not values["generated"]:
@@ -84,7 +88,8 @@ def table_summary(conn, system):
         lines.append(
             f"| {LABELS[condition]} | {len(values['generated'])} | {_cell(values['generated'], percent=False)} | "
             f"{_cell(values['format_errors'], percent=False)} | "
-            f"{_cell(values['error_rate'])} | {recall} | {_cell(values['detection_seeded'])} | "
+            f"{_cell(values['error_rate'])} | {recall} | {_cell(values['partition_coverage'])} | "
+            f"{_cell(values['detection_seeded'])} | "
             f"{_cell(values['detection_mutants'])} | {calls} |"
         )
     return "\n".join(lines)
