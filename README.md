@@ -365,3 +365,18 @@ The model and effort level are fixed for a run and recorded with it. No fallback
 - Wang et al. (2023). Self-consistency improves chain of thought reasoning in language models. ICLR.
 - Arcuri and Briand (2011). A practical guide for using statistical tests to assess randomized algorithms in software engineering. ICSE.
 - ISO 26262-6:2018. Road vehicles, functional safety, product development at the software level.
+
+## Design v2 results (frozen plan, Amendment 1)
+
+Ten repetitions per condition, votes at temperature 0.3, models run locally with Ollama.
+
+| Model | B1 error | Proposed (FR-ordered) error | Single vote right | H2' (vs B1) | Target T (mean <= 6 %) |
+|---|---|---|---|---|---|
+| Qwen2.5 7B | 46 % | 5 % | 96 % | 10/10 lower, p = 0.002 (Holm 0.004) | met (5.3 %, worst 11 %) |
+| Qwen2.5 3B | 59 % | 42 % | 62 % | 6/10 lower, p = 0.109 | not met |
+
+H1' (proposed < grounded vote) holds for 7B (p = 0.002, Holm 0.004) and is not significant after Holm for 3B (p = 0.039, Holm 0.078).
+Runs that failed because the output was cut off at the length limit are left out and listed in the paper
+(3B: FR one repetition, FR-rewrite one repetition). 14B was not run. The paper draft is built by `paper/` from these databases
+(`python paper/paper_numbers.py results/v2/*.db`, then `paper_figures.py`, `build_docx.py`).
+There is no human-designed baseline yet; the paper states this as a limitation.
