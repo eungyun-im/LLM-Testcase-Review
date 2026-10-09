@@ -134,6 +134,47 @@ def rule_tables(conn, spec):
     return result
 
 
+def final_votes(conn, outputs):
+    """Grade the votes that end a run of the additive procedure.
+
+    {condition: tally}. The expected result of a test in such a run IS the
+    majority of these votes, so its accuracy is one minus the error rate of the
+    run. The rewrite loop is left out: its votes belong to the section above.
+    """
+    result = {}
+    runs = conn.execute(
+        "SELECT DISTINCT r.id, r.condition FROM runs AS r JOIN llm_calls AS c ON c.run_id = r.id"
+        " WHERE c.kind = 'cross_check' AND r.condition != 'FR-rewrite' AND r.failure IS NULL"
+    ).fetchall()
+    for run in runs:
+        tests = {
+            row["tc_id"]: TestCase(row["tc_id"], row["req_id"], row["speed_kph"], row["obstacle_m"],
+                                   row["sensor_age_ms"], row["expected"])
+            for row in conn.execute("SELECT * FROM tests WHERE run_id = ?", (run["id"],))
+        }
+        ballots = defaultdict(list)
+        for call in conn.execute(
+            "SELECT response FROM llm_calls WHERE run_id = ? AND kind = 'cross_check'", (run["id"],)
+        ):
+            for tc_id, answer in _parse_votes(call["response"]).items():
+                if tc_id in tests and answer in outputs:
+                    ballots[tc_id].append(answer)
+        tally = result.setdefault(run["condition"], Counter())
+        for tc_id, answers in ballots.items():
+            truth = output_of(reference, tests[tc_id])
+            tally["tests"] += 1
+            tally["votes"] += len(answers)
+            tally["votes right"] += sum(a == truth for a in answers)
+            winner, count = Counter(answers).most_common(1)[0]
+            if count > VOTES / 2:
+                tally["majority"] += 1
+                tally["majority right"] += winner == truth
+            if len(answers) == VOTES and len(set(answers)) == 1:
+                tally["unanimous"] += 1
+                tally["unanimous right"] += winner == truth
+    return result
+
+
 def ratio(part, whole):
     return f"{part / whole:.0%} ({part} of {whole})" if whole else "n/a"
 
@@ -160,6 +201,21 @@ def render(conn):
             )
         parts.append("")
 
+    graded = final_votes(conn, outputs)
+    if graded:
+        parts += [
+            "## The final vote of the additive procedure", "",
+            "The expected results of these runs are the majority of the votes below, so the share of the majority that is right is one minus the error rate.", "",
+            "| Condition | Tests voted on | Single votes right | Majority exists | Majority right | Unanimous | Unanimous right |",
+            "|---|---|---|---|---|---|---|",
+        ]
+        for name, t in sorted(graded.items()):
+            parts.append(
+                f"| {name} | {t['tests']} | {ratio(t['votes right'], t['votes'])} | {ratio(t['majority'], t['tests'])} "
+                f"| {ratio(t['majority right'], t['majority'])} | {ratio(t['unanimous'], t['tests'])} "
+                f"| {ratio(t['unanimous right'], t['unanimous'])} |"
+            )
+        parts.append("")
     tables = rule_tables(conn, spec)
     if tables["votes"] or tables["unusable"]:
         votes, chosen = tables["votes"], tables["chosen"]

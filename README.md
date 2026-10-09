@@ -170,11 +170,28 @@ The plan names a third primary comparison per model; here it is the effect acros
 What the confirmation shows, and what it does not:
 
 - **Both predictions held** with the design frozen, for this model. Extending the set without any check (48 %) or with the ungrounded vote (47 %) does not lower the error rate; the grounded vote does (26 %); giving the model the same grounded findings but letting it rewrite the set gives 55 %.
-- **The effect is smaller than the pilots suggested.** The third pilot showed 20 % ± 3 %. With 10 repetitions it is 26 % ± 15 %, and one repetition is at 55 %. A single vote was right 71 % of the time (pilot: 85 %), and results confirmed by all three votes 78 % (pilot: 95 %). The pilot overstated the method, which is the reason the design was frozen before this run.
+- **The effect is a little smaller than the third pilot suggested.** There it was 20 % ± 3 %, here it is 26 % ± 15 %, and one repetition is at 55 %. The narrow spread of the pilot was five repetitions that happened to be alike. This is the reason the design was frozen and repeated 10 times.
+- **The error rate of the method is the error of its vote.** The expected result of a test is the majority of three votes, so the share of wrong results is one minus the share of majorities that are right. For the grounded vote the majority is right for 75 % of the tests (a single vote 74 %; all three agreeing for 73 % of the tests, and right in 81 % of those), and the error rate is 26 %. For the vote on the raw values the majority is right 52 % of the time and the error rate is 47 %. The method is as good as the model is at applying the requirements to facts that are already given. Table: [`-analysis.md`](results/confirm/qwen2.5-7b-analysis.md).
 - **It is not a solution to the problem.** One in four expected results is still wrong. 64 of the 98 wrong results of FR are in one input class, valid speed with sensor data too old, where the model states `BRAKE` and the requirements call for `FAULT`: the facts are given, and the priority between the requirements is still applied wrongly.
 - **Detection improves, with less certainty.** Mutant detection 58 % → 87 % (p = 0.002; 0.041 after Holm over all 21 comparisons of the report), seeded defects 57 % → 70 % (p = 0.051, not significant). At equal test counts the gain shrinks but stays: seeded 57 % → 62 %, mutants 58 % → 78 %. The rewrite loop falls below the starting point at equal size (38 % and 52 %): its extra tests were mostly wrong.
 - **Two parts did not show an effect.** Removing the coverage feedback or the mutation feedback left the error rate unchanged (27 %, 27 %). The coverage feedback raises boundary recall (97 % against 75 %) and the mutation feedback is within noise (83 % against 87 % mutant detection).
 - **Limits:** one model, one stateless system, no human-designed baseline yet. The parser rules and the input classes were written while reading this model's pilot output.
+
+### The same design on a smaller model
+
+`qwen2.5:3b` (3.1 B parameters), same commit, 10 repetitions, 80 runs, one failed (output cut off in the rewrite loop), 355 model calls, 26 minutes. Data: [`results/confirm/qwen2.5-3b.db`](results/confirm/qwen2.5-3b.db), [tables](results/confirm/qwen2.5-3b.md), [error analysis](results/confirm/qwen2.5-3b-analysis.md).
+
+| Condition | Error rate | Detection: seeded | Detection: mutants | LLM calls |
+|---|---|---|---|---|
+| B0 single shot | 47% ± 10% | 27% ± 11% | 41% ± 15% | 1 |
+| B1 enhanced prompt | 39% ± 21% | 36% ± 23% | 37% ± 19% | 1 |
+| FR | 53% ± 22% | 41% ± 32% | 45% ± 28% | 5.7 |
+| FR with ungrounded cross-check | 39% ± 20% | 36% ± 22% | 38% ± 19% | 5.3 |
+| FR, model rewrites the set | 46% ± 26% | 41% ± 22% | 47% ± 20% | 10.4 |
+
+**The method does not work for this model.** Its error rate (53 %) is not lower than the starting set's (39 %); if anything it is higher (p = 0.039 in that direction, not significant after correction). The reason is in the votes: given the decided conditions, a single vote of this model is right 44 % of the time and the majority 42 %, where guessing among three outputs gives 33 %. The conditions cannot help a model that cannot apply the rules to them. The same model could not write a decision table either: all 12 requests of a probe returned something unusable (it mixed up the separators and put `otherwise` in the middle of rows). The sets themselves are erratic, from empty to 121 tests per run, with up to 28 rejected rows.
+
+For the plan this means that hypothesis H3 is not "the effect shrinks as the model gets better" but first "the effect needs a model that can apply the rules". Two models cannot say more than that, and a stronger one has not been run.
 
 ### Pilots on a small local model
 
@@ -202,7 +219,7 @@ Three runs with `qwen2.5:7b` (7.6 B parameters, quantized, run locally with Olla
 What the pilots show, as observations to test in the full experiment and not as findings:
 
 - **The errors are in the expected results, and the model cannot check itself.** Extending B1 without a cross-check leaves the error rate at 54 %, and a vote on the raw values leaves it at 49 %. In pilot 1 the model's votes were right 45 % of the time.
-- **Grounding the vote changes that.** With the conditions decided by a program, single votes were right 85 % of the time, unanimous results 95 %, and the error rate of the test set fell to 20 %. In all five repetitions FR was below B1, below the ungrounded vote and below the rewrite loop (A12 = 0.00, p = 0.062, which is the smallest value five pairs can give).
+- **Grounding the vote changes that.** With the conditions decided by a program, single votes were right 77 % of the time and the majority 80 % (on the raw values: 52 % and 53 %), and the error rate of the test set fell to 20 %. In all five repetitions FR was below B1, below the ungrounded vote and below the rewrite loop (A12 = 0.00, p = 0.062, which is the smallest value five pairs can give).
 - **An accurate check is not enough if the model does the fixing.** The rewrite loop received the same grounded findings and ended at 55 %, with the most calls (14.2).
 - **Coverage feedback finds the missing cases.** The defect that only shows without an obstacle was detected in 0 of 5 runs of B0, 2 of B1 and 4 of FR. In pilot 1 it was found once in 15 runs.
 - **The mutation feedback did not earn its place here.** Removing it changed nothing measurable (89 % and 90 % detection without it).
@@ -212,7 +229,7 @@ The pilots also changed the instrument. Reading the raw answers of a first trial
 
 ### Still open
 
-The other models of [`docs/experiment_plan.md`](docs/experiment_plan.md) (a smaller one is running, a stronger one needs another download or an API key), the human-designed baseline (condition H), and a second system. The tables are produced by `python -m tcgen.report`, the error analysis by `python -m tcgen.analysis`, the equal-size comparison by `python -m tcgen.equal_size`, the figure by `python -m tools.result_figures`.
+A stronger model (it needs a larger download or an API key), the human-designed baseline (condition H), and a second system. The tables are produced by `python -m tcgen.report`, the error analysis by `python -m tcgen.analysis`, the equal-size comparison by `python -m tcgen.equal_size`, the figure by `python -m tools.result_figures`.
 
 The pipeline is exercised in CI with a built-in simulator instead of a model. The simulator exists to run every code path. Its output is marked as simulated in the database and in the report, and it is not evidence about any real model.
 
@@ -302,7 +319,8 @@ The model and effort level are fixed for a run and recorded with it. No fallback
 - [x] Three pilots on a small local model, with error analysis
 - [x] Design of the full experiment written down before it is run
 - [x] Confirmation run with the frozen design, 10 repetitions, one model
-- [ ] The other models of the plan
+- [x] A smaller model: the method needs a model that can apply the rules
+- [ ] A stronger model
 - [ ] Human-designed baseline
 
 **Next**

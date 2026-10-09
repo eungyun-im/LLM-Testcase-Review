@@ -52,6 +52,17 @@ Final test sets of all repetitions, by input class.
 | valid speed of at least 30 km/h, fresh sensor data, obstacle farther than 20 m | 11 | 6% | 64% (7 of 11) | BRAKE instead of NO_ACTION |
 | valid speed of at least 30 km/h, fresh sensor data, obstacle within 20 m | 35 | 18% | 51% (18 of 35) | NO_ACTION instead of BRAKE |
 
+## The final vote of the additive procedure
+
+The expected results of these runs are the majority of the votes below, so the share of the majority that is right is one minus the error rate.
+
+| Condition | Tests voted on | Single votes right | Majority exists | Majority right | Unanimous | Unanimous right |
+|---|---|---|---|---|---|---|
+| FR | 192 | 77% (421 of 545) | 98% (189 of 192) | 80% (151 of 189) | 64% (122 of 192) | 85% (104 of 122) |
+| FR-coverage | 155 | 79% (367 of 462) | 100% (155 of 155) | 80% (124 of 155) | 79% (122 of 155) | 86% (105 of 122) |
+| FR-mutation | 176 | 77% (396 of 516) | 99% (175 of 176) | 79% (138 of 175) | 71% (125 of 176) | 86% (108 of 125) |
+| FR-self | 193 | 52% (301 of 577) | 98% (190 of 193) | 53% (101 of 190) | 84% (162 of 193) | 54% (88 of 162) |
+
 ## The grounded cross-check as a detector of wrong expected results
 
 Every round that ran it: 370 test results voted on, 3 votes each.
