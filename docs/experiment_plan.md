@@ -90,3 +90,11 @@ right, the other conditions.
 order of the requirements) is more structure than the first design had, and was written by the person who also wrote
 the reference. The temperature and the way of asking were chosen on tests of the earlier runs, and checked on a second
 sample of them, not on fresh ones: the run of v2 is the first on fresh generations. No human-designed baseline yet.
+
+**Amendment 1 to design v2 (2026-10-09, after the first start of its run was stopped and before any result of it was
+analysed).** With the temperature 0.3 on every call, the generation of the starting set was cut off at the token limit in
+8 of the first 20 runs: at the lower temperature the model repeats lines until it hits the limit, and a failed starting
+set takes all conditions of that repetition with it. The vote benefits from the lower temperature, the generation does
+not. So the temperature 0.3 now applies **to the votes only** (`--vote-temperature 0.3`); generation and the feedback
+rounds use the default sampling of the server. Everything else in design v2 stays. The stopped run is kept as
+`results/v2/aborted-temperature-on-all-calls.db` and is not part of any result.

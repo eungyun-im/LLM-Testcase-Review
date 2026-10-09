@@ -15,6 +15,8 @@ from dataclasses import dataclass
 DEFAULT_MODEL = "claude-opus-5-5"
 DEFAULT_EFFORT = "medium"
 MAX_TOKENS = 16000
+# Calls whose answer is a short judgement, not a test set. A vote temperature applies to these only.
+VOTE_KINDS = ("cross_check", "formalize")
 
 
 @dataclass(frozen=True)
@@ -93,10 +95,16 @@ class OpenAICompatibleClient:
     name = "openai-compatible"
 
     def __init__(self, model, base_url="http://localhost:11434/v1", api_key=None,
-                 max_tokens=MAX_TOKENS, timeout_s=600, retries=5, temperature=None):
+                 max_tokens=MAX_TOKENS, timeout_s=600, retries=5, temperature=None, vote_temperature=None):
         self.model = model
         self.temperature = temperature
-        self.effort = "none" if temperature is None else f"temperature {temperature:g}"
+        self.vote_temperature = vote_temperature
+        parts = []
+        if temperature is not None:
+            parts.append(f"temperature {temperature:g}")
+        if vote_temperature is not None:
+            parts.append(f"votes at temperature {vote_temperature:g}")
+        self.effort = "; ".join(parts) or "none"
         self.base_url = base_url.rstrip("/")
         self.max_tokens = max_tokens
         self._api_key = api_key
@@ -131,8 +139,9 @@ class OpenAICompatibleClient:
             "max_tokens": self.max_tokens,
             "stream": False,
         }
-        if self.temperature is not None:
-            body["temperature"] = self.temperature
+        temperature = self.vote_temperature if (kind in VOTE_KINDS and self.vote_temperature is not None) else self.temperature
+        if temperature is not None:
+            body["temperature"] = temperature
         data = self._post(body)
         choice = data["choices"][0]
         if choice.get("finish_reason") == "length":

@@ -98,3 +98,14 @@ def test_a_given_temperature_is_sent_and_recorded(server):
     client.complete("x")
     assert server["requests"][0][2]["temperature"] == 0.3
     assert client.effort == "temperature 0.3"
+
+
+def test_a_vote_temperature_reaches_the_votes_and_not_the_generation(server):
+    server["answers"] = [answer("tests"), answer("FAULT"), answer("table")]
+    client = OpenAICompatibleClient("m", base_url=server["url"], vote_temperature=0.3)
+    client.complete("x", kind="generate")
+    client.complete("x", kind="cross_check")
+    client.complete("x", kind="formalize")
+    sent = [request[2].get("temperature") for request in server["requests"]]
+    assert sent == [None, 0.3, 0.3]
+    assert client.effort == "votes at temperature 0.3"

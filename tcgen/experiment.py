@@ -155,12 +155,14 @@ def run_human_baseline(conn, context, path=HUMAN_BASELINE):
     return True
 
 
-def make_client(name, context, model, effort, seed, base_url=None, api_key_env=None, temperature=None):
+def make_client(name, context, model, effort, seed, base_url=None, api_key_env=None, temperature=None,
+                vote_temperature=None):
     if name == "anthropic":
         return AnthropicClient(model=model, effort=effort)
     if name == "openai":
         api_key = os.environ.get(api_key_env) if api_key_env else None
-        return OpenAICompatibleClient(model=model, base_url=base_url, api_key=api_key, temperature=temperature)
+        return OpenAICompatibleClient(model=model, base_url=base_url, api_key=api_key, temperature=temperature,
+                                      vote_temperature=vote_temperature)
     return SimulatedLLM(context.spec, context.reference, seed=seed)
 
 
@@ -171,6 +173,8 @@ def main():
                         help="server of the openai client; the default is Ollama on this machine")
     parser.add_argument("--temperature", type=float, default=None,
                         help="sampling temperature of the openai client; not sent when omitted")
+    parser.add_argument("--vote-temperature", type=float, default=None,
+                        help="sampling temperature of the votes only (openai client)")
     parser.add_argument("--api-key-env", default=None,
                         help="name of the environment variable that holds the API key, if the server needs one")
     parser.add_argument("--reps", type=int, default=10)
@@ -185,7 +189,8 @@ def main():
     context = make_context()
     conn = store.connect(args.db)
     llm = make_client(args.client, context, args.model, args.effort, args.seed,
-                      args.base_url, args.api_key_env, args.temperature)
+                      args.base_url, args.api_key_env, args.temperature,
+                      args.vote_temperature)
     for repetition in range(1, args.reps + 1):
         run_repetition(conn, llm, context, repetition, args.conditions)
         print(f"repetition {repetition}/{args.reps} done")
