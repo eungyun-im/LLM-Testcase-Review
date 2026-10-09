@@ -51,16 +51,29 @@ def uses_simulator(conn):
     return conn.execute("SELECT 1 FROM runs WHERE client = 'simulated' LIMIT 1").fetchone() is not None
 
 
+def models_line(conn):
+    """Which model produced the runs: a result means nothing without it."""
+    rows = conn.execute(
+        "SELECT client, model, COUNT(*) AS runs, MIN(started_at) AS first, MAX(started_at) AS last"
+        " FROM runs WHERE client != 'human' GROUP BY client, model ORDER BY client, model"
+    ).fetchall()
+    return "\n".join(
+        f"- `{row['model']}` through the {row['client']} client: {row['runs']} runs, "
+        f"{row['first'][:10]} to {row['last'][:10]}"
+        for row in rows
+    )
+
+
 def table_summary(conn, system):
     lines = [
-        "| Condition | Runs | Tests | Error rate | Boundary recall (simple / strict) | Detection: seeded | Detection: mutants | LLM calls |",
-        "|---|---|---|---|---|---|---|---|",
+        "| Condition | Runs | Tests | Rows rejected | Error rate | Boundary recall (simple / strict) | Detection: seeded | Detection: mutants | LLM calls |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for condition in ORDER:
         values = {
             name: list(store.metric_values(conn, system, condition, name).values())
             for name in (
-                "generated", "error_rate", "boundary_recall_simple", "boundary_recall_strict",
+                "generated", "format_errors", "error_rate", "boundary_recall_simple", "boundary_recall_strict",
                 "detection_seeded", "detection_mutants", "llm_calls",
             )
         }
@@ -70,6 +83,7 @@ def table_summary(conn, system):
         calls = "" if condition == "H" else _cell(values["llm_calls"], percent=False)
         lines.append(
             f"| {LABELS[condition]} | {len(values['generated'])} | {_cell(values['generated'], percent=False)} | "
+            f"{_cell(values['format_errors'], percent=False)} | "
             f"{_cell(values['error_rate'])} | {recall} | {_cell(values['detection_seeded'])} | "
             f"{_cell(values['detection_mutants'])} | {calls} |"
         )
@@ -120,6 +134,7 @@ def render(conn):
     parts = ["# Results", ""]
     if uses_simulator(conn):
         parts += [SIMULATED_WARNING, ""]
+    parts += [models_line(conn), ""]
     for system in _systems(conn):
         parts += [f"## {system}", "", "### Table 1. Metrics by condition", "", table_summary(conn, system), ""]
         parts += ["### Table 2. Seeded defects detected (runs that detected / runs)", "", table_seeded(conn, system), ""]

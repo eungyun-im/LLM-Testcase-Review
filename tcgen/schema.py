@@ -33,7 +33,8 @@ def _parse_row(row, outputs):
     age = float(row["sensor_age_ms"])
     if age != int(age):
         raise ValueError("sensor_age_ms must be an integer")
-    expected = row["expected"].strip().upper()
+    # A remark after the value ("BRAKE  # added for the boundary") does not change the value.
+    expected = row["expected"].split("#")[0].strip().upper()
     if expected not in outputs:
         raise ValueError(f"unknown expected result {expected!r}")
     return TestCase(
@@ -49,7 +50,17 @@ def _parse_row(row, outputs):
 def parse_csv(text, outputs):
     """Extract test cases from model output.
 
-    Looks for the header line, then reads rows until the block ends. Returns
+    Looks for the header line, then reads rows until the block ends. Blank
+    lines between the header and the first row are skipped. Returns
+    (tests, format_errors).
+
+    What is forgiven, because it does not change what the test says: text
+    around the table, a code fence, spaces, upper or lower case, a blank line
+    after the header, a whole number written as 100.0, a remark after the
+    expected result. What is counted as a format error and dropped: a row
+    with the wrong number of columns, a value that is not a number, an
+    expected result that is not one of the defined outputs, a repeated or
+    missing test ID. Nothing is repaired by guessing. Returns
     (tests, format_errors): rows that cannot be parsed or that name an
     undefined output are counted, not repaired.
     """
@@ -60,10 +71,14 @@ def parse_csv(text, outputs):
     )
     if start is None:
         return [], 0
-    block = []
-    for line in lines[start:]:
-        if not line.strip() or line.strip().startswith("```"):
+    block = [lines[start]]
+    for line in lines[start + 1:]:
+        if line.strip().startswith("```"):
             break
+        if not line.strip():
+            if len(block) > 1:
+                break
+            continue  # a blank line right after the header is not the end of the table
         block.append(line)
     reader = csv.DictReader(io.StringIO("\n".join(block)), skipinitialspace=True)
     reader.fieldnames = [name.strip().lower() for name in reader.fieldnames]

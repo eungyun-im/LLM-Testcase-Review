@@ -2,19 +2,21 @@
 
     python -m tcgen.experiment --client simulated --reps 3
     python -m tcgen.experiment --client anthropic --reps 10 --db data/results.db
+    python -m tcgen.experiment --client openai --model qwen2.5:7b --reps 3 --db results/pilot.db
 
 Per repetition, B0 and B1 are generated once. FR and its three ablations all
 start from that repetition's B1 test set, so they can be compared pairwise.
 """
 
 import argparse
+import os
 from dataclasses import dataclass
 
 from sut.aeb import decide as reference_decide
 from sut.defects import SEEDED
 from tcgen import metrics, mutation, store
 from tcgen.generate import generate
-from tcgen.llm import AnthropicClient, DEFAULT_EFFORT, DEFAULT_MODEL, LLMError
+from tcgen.llm import AnthropicClient, DEFAULT_EFFORT, DEFAULT_MODEL, LLMError, OpenAICompatibleClient
 from tcgen.refine import ALL_CHECKS, refine
 from tcgen.schema import load_csv_file
 from tcgen.simulator import SimulatedLLM
@@ -139,15 +141,22 @@ def run_human_baseline(conn, context, path=HUMAN_BASELINE):
     return True
 
 
-def make_client(name, context, model, effort, seed):
+def make_client(name, context, model, effort, seed, base_url=None, api_key_env=None):
     if name == "anthropic":
         return AnthropicClient(model=model, effort=effort)
+    if name == "openai":
+        api_key = os.environ.get(api_key_env) if api_key_env else None
+        return OpenAICompatibleClient(model=model, base_url=base_url, api_key=api_key)
     return SimulatedLLM(context.spec, context.reference, seed=seed)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Run the test generation experiment.")
-    parser.add_argument("--client", choices=["simulated", "anthropic"], default="simulated")
+    parser.add_argument("--client", choices=["simulated", "anthropic", "openai"], default="simulated")
+    parser.add_argument("--base-url", default="http://localhost:11434/v1",
+                        help="server of the openai client; the default is Ollama on this machine")
+    parser.add_argument("--api-key-env", default=None,
+                        help="name of the environment variable that holds the API key, if the server needs one")
     parser.add_argument("--reps", type=int, default=10)
     parser.add_argument("--conditions", nargs="+", default=CONDITIONS, choices=CONDITIONS)
     parser.add_argument("--db", default=str(ROOT / "data" / "results.db"))
@@ -159,7 +168,8 @@ def main():
 
     context = make_context()
     conn = store.connect(args.db)
-    llm = make_client(args.client, context, args.model, args.effort, args.seed)
+    llm = make_client(args.client, context, args.model, args.effort, args.seed,
+                      args.base_url, args.api_key_env)
     for repetition in range(1, args.reps + 1):
         run_repetition(conn, llm, context, repetition, args.conditions)
         print(f"repetition {repetition}/{args.reps} done")

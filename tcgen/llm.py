@@ -6,7 +6,10 @@ cross_check). meta carries structured context that only the simulator reads;
 a real model sees the prompt text and nothing else.
 """
 
+import json
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 
 DEFAULT_MODEL = "claude-opus-5-5"
@@ -67,6 +70,76 @@ class AnthropicClient:
             text=text,
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
+            duration_ms=round((time.monotonic() - started) * 1000),
+        )
+
+
+class OpenAICompatibleClient:
+    """Any server that speaks the OpenAI chat completions protocol.
+
+    That covers a model running on this machine (Ollama, llama.cpp, vLLM) and
+    most hosted services. Only the base URL and the model name differ:
+
+        Ollama on this machine   http://localhost:11434/v1
+        a hosted service         its base URL, with the key in an environment variable
+
+    No sampling parameter is sent, so the server's defaults apply and
+    run-to-run variation is measured by repetition. The model name is recorded
+    with every run. A hosted model can change behind its name, a local model
+    file cannot: for results that have to be reproduced, prefer the latter.
+    """
+
+    name = "openai-compatible"
+    effort = "none"
+
+    def __init__(self, model, base_url="http://localhost:11434/v1", api_key=None,
+                 max_tokens=MAX_TOKENS, timeout_s=600, retries=5):
+        self.model = model
+        self.base_url = base_url.rstrip("/")
+        self.max_tokens = max_tokens
+        self._api_key = api_key
+        self._timeout_s = timeout_s
+        self._retries = retries
+
+    def _post(self, body):
+        headers = {"Content-Type": "application/json"}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+        request = urllib.request.Request(
+            f"{self.base_url}/chat/completions", data=json.dumps(body).encode(), headers=headers
+        )
+        for attempt in range(self._retries + 1):
+            try:
+                with urllib.request.urlopen(request, timeout=self._timeout_s) as response:
+                    return json.loads(response.read())
+            except urllib.error.HTTPError as error:
+                # Rate limits and server hiccups are worth waiting for. Anything else is not.
+                if error.code not in (429, 500, 502, 503, 529) or attempt == self._retries:
+                    raise LLMError(f"HTTP {error.code} from {self.base_url}") from error
+                time.sleep(min(60, 2 ** attempt))
+            except urllib.error.URLError as error:
+                raise LLMError(f"cannot reach {self.base_url}: {error.reason}") from error
+        raise LLMError("unreachable")
+
+    def complete(self, prompt, kind="generate", meta=None):
+        started = time.monotonic()
+        data = self._post({
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": self.max_tokens,
+            "stream": False,
+        })
+        choice = data["choices"][0]
+        if choice.get("finish_reason") == "length":
+            raise LLMError(f"output was cut off at max_tokens ({kind})")
+        text = choice["message"].get("content") or ""
+        if not text.strip():
+            raise LLMError(f"model returned no text ({kind})")
+        usage = data.get("usage") or {}
+        return LLMResponse(
+            text=text,
+            input_tokens=usage.get("prompt_tokens", 0),
+            output_tokens=usage.get("completion_tokens", 0),
             duration_ms=round((time.monotonic() - started) * 1000),
         )
 

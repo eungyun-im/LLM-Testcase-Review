@@ -29,7 +29,7 @@ On top of that evaluation it implements **feedback refinement (FR)**: three auto
 
 The system under test is the AEB-lite decision function from [automotive-sw-qa](https://github.com/eungyun-im/automotive-sw-qa). ISO 26262-6 recommends boundary value analysis for software unit testing, which is why boundary coverage is a first-class metric here.
 
-> **Status:** the evaluation, the feedback loop, the experiment runner and the result tables are implemented and tested. The experiment has not been run on a real model yet, so there are no results to report. The human baseline test set and the equivalent-mutant review are open.
+> **Status:** the evaluation, the feedback loop, the experiment runner and the result tables are implemented and tested. A pilot has been run on one small local model (5 repetitions, [results below](#results)). The full experiment on a stronger model, the human baseline test set and the equivalent-mutant review are open.
 
 ```mermaid
 flowchart LR
@@ -120,23 +120,46 @@ Everything a run produces is stored in SQLite: prompts, raw model output, parsed
 
 ## Results
 
-None yet. The tables below are produced by `python -m tcgen.report` once the experiment has been run on a real model.
+### Pilot on a small local model
 
-**Table 1. Metrics by condition** (mean ± standard deviation over repetitions)
+One model, five repetitions, to find out whether the pipeline holds up against real output and what the numbers look like. It is not the experiment: the model is small, n = 5, and no comparison below is statistically significant.
+
+| | |
+|---|---|
+| Model | `qwen2.5:7b` (7.6 B parameters, 4-bit quantized), run locally with Ollama on one GPU |
+| Runs | 30 (6 conditions × 5 repetitions), none failed |
+| Model calls | 220, 247 k input and 116 k output tokens, 111 minutes |
+| Date | 2026-10-09 |
+| Data | [`results/pilot/qwen2.5-7b.db`](results/pilot/qwen2.5-7b.db): every prompt, raw answer, parsed test and detection. Tables: [`results/pilot/qwen2.5-7b.md`](results/pilot/qwen2.5-7b.md) |
+
+**Metrics by condition** (mean ± standard deviation over 5 repetitions)
 
 | Condition | Tests | Error rate | Boundary recall (simple / strict) | Detection: seeded | Detection: mutants | LLM calls |
 |---|---|---|---|---|---|---|
-| B0 | | | | | | |
-| B1 | | | | | | |
-| FR | | | | | | |
-| FR without boundary feedback | | | | | | |
-| FR without cross-check | | | | | | |
-| FR without mutation feedback | | | | | | |
-| H | | | | | | |
+| B0 single shot | 10.2 ± 0.4 | 45% ± 12% | 24% ± 8% / 23% ± 8% | 31% ± 12% | 42% ± 6% | 1 |
+| B1 enhanced prompt | 27.2 ± 12.5 | 50% ± 13% | 64% ± 10% / 53% ± 24% | 51% ± 16% | 53% ± 15% | 1 |
+| FR feedback refinement | 41.8 ± 13.6 | 52% ± 16% | 91% ± 17% / 72% ± 32% | 51% ± 26% | 65% ± 23% | 13 |
+| FR without boundary feedback | 45.8 ± 24.5 | 57% ± 11% | 65% ± 6% / 55% ± 14% | 49% ± 19% | 60% ± 18% | 13 |
+| FR without cross-check | 33.8 ± 4.0 | 55% ± 13% | 100% ± 0% / 76% ± 33% | 66% ± 13% | 80% ± 13% | 3.0 ± 1.0 |
+| FR without mutation feedback | 65.2 ± 35.0 | 56% ± 18% | 96% ± 6% / 67% ± 28% | 54% ± 19% | 68% ± 19% | 13 |
 
-**Table 2. Seeded defects detected** (runs that detected the defect ÷ runs), one row per defect F1 to F7.
+What the pilot shows, as observations to test in the full experiment and not as findings:
 
-**Table 3. Statistical comparisons** (test, means, A12, p, Holm-adjusted p).
+- **Half of the expected results are wrong, in every condition.** The error rate stays between 45 % and 57 %. This model chooses inputs far better than it derives the output for them, and feedback does not change that.
+- **Boundary feedback does what it is for.** Simple boundary recall goes from 24 % (B0) to 64 % (B1) to 91 % (FR), and it falls back to 65 % when the boundary check is removed. Strict recall follows at a distance: the value is there, but the other inputs often do not let that boundary decide the output.
+- **More tests did not mean more defects found.** FR quadruples the test count over B0, but detection of the seeded defects does not move from B1 to FR (51 % and 51 %), because detection only counts tests whose expected result is right.
+- **The cross-check cost most and helped least.** The variant without it used 3 calls instead of 13 and had the highest detection (66 % seeded, 80 % mutants). A plausible reason: the cross-check asks the same model to recompute an answer it already gets wrong half the time, so its votes are noise. With five repetitions this can still be chance (p = 0.125 before correction).
+- **One defect was almost never found.** F5, "no obstacle" treated as distance zero, was detected in 1 of 15 runs of B0, B1 and FR. Only 99 of the 1120 generated tests have no obstacle at all.
+
+The pilot also changed the instrument. Reading the raw answers of a first trial run showed two cases where the parser dropped usable tables: a blank line after the header, and a remark after the expected result. Both are now accepted, the rules for what is forgiven and what is counted as a format error are written down in [`tcgen/schema.py`](tcgen/schema.py), and the trial run was discarded. The numbers above come from one run with the final rules.
+
+### Full experiment
+
+Not run yet. It needs a stronger model, 10 repetitions and the human baseline (condition H). The tables are produced by `python -m tcgen.report`:
+
+- **Table 1.** Metrics by condition, as above, with condition H.
+- **Table 2.** Seeded defects detected, one row per defect F1 to F7.
+- **Table 3.** Statistical comparisons (test, means, A12, p, Holm-adjusted p).
 
 The pipeline is exercised in CI with a built-in simulator instead of a model. The simulator exists to run every code path. Its output is marked as simulated in the database and in the report, and it is not evidence about any real model.
 
@@ -157,7 +180,7 @@ llm-testcase-review/
 │   ├── checks.py        Boundary check, cross-check, mutation check
 │   ├── refine.py        Feedback refinement loop
 │   ├── generate.py      B0 and B1 generation
-│   ├── llm.py           LLM clients
+│   ├── llm.py           LLM clients: Claude, and any OpenAI-compatible server (local or hosted)
 │   ├── simulator.py     Stand-in client for pipeline tests
 │   ├── experiment.py    Experiment runner
 │   ├── stats.py         Wilcoxon, Mann-Whitney, A12, Holm
@@ -166,6 +189,7 @@ llm-testcase-review/
 ├── data/
 │   ├── human/           Human baseline test set (condition H)
 │   └── mutants/         Equivalent-mutant decisions
+├── results/pilot/       Stored runs and tables of the pilot
 └── tests/
 ```
 
@@ -186,7 +210,19 @@ python -m tcgen.experiment --client simulated --reps 3 --db data/results.db
 python -m tcgen.report --db data/results.db
 ```
 
-Run on a real model (needs `pip install -r requirements-llm.txt` and API credentials):
+Run on a model on this machine, with [Ollama](https://ollama.com) (no account and no key):
+
+```bash
+ollama pull qwen2.5:7b
+```
+
+```bash
+python -m tcgen.experiment --client openai --model qwen2.5:7b --reps 5 --db results/pilot/qwen2.5-7b.db
+```
+
+The same client reaches any hosted service with an OpenAI-compatible API: pass its address with `--base-url` and the name of the environment variable that holds the key with `--api-key-env`.
+
+Run on Claude (needs `pip install -r requirements-llm.txt` and API credentials):
 
 ```bash
 python -m tcgen.experiment --client anthropic --reps 10 --db data/results.db
@@ -206,7 +242,8 @@ The model and effort level are fixed for a run and recorded with it. No fallback
 - [x] Experiment runner, SQLite store, result tables and statistics
 - [ ] Human baseline test set, designed before looking at the defects
 - [ ] Equivalent-mutant review
-- [ ] Pilot on a real model, then the full run with results published here
+- [x] Pilot on a real model (small local model, 5 repetitions)
+- [ ] Full run on a stronger model, with results published here
 
 **Next**
 

@@ -104,3 +104,43 @@ def test_parse_tolerates_surrounding_prose_and_counts_bad_rows():
 
 def test_parse_without_a_table_returns_nothing():
     assert parse_csv("I cannot help with that.", SPEC.outputs) == ([], 0)
+
+
+def test_blank_line_after_the_header_does_not_hide_the_table():
+    # Seen in a pilot run: the model separated the header from the rows.
+    text = (
+        "tc_id,req_id,speed_kph,obstacle_m,sensor_age_ms,expected\n"
+        "\n"
+        "1,REQ-01,30.0,20.0,100,BRAKE\n"
+        "2,REQ-02,29.9,20.0,100,NO_ACTION\n"
+        "\n"
+        "3,REQ-01,50.0,10.0,100,BRAKE\n"
+    )
+    parsed, errors = parse_csv(text, SPEC.outputs)
+    assert [test.tc_id for test in parsed] == ["1", "2"]
+    assert errors == 0
+
+
+def test_remark_after_the_expected_result_is_ignored():
+    text = (
+        "tc_id,req_id,speed_kph,obstacle_m,sensor_age_ms,expected\n"
+        "1,REQ-01,30.0,20.0,100,BRAKE  # added for the boundary\n"
+        "2,REQ-02,29.9,20.0,100.0,no_action\n"
+    )
+    parsed, errors = parse_csv(text, SPEC.outputs)
+    assert [(test.tc_id, test.expected, test.sensor_age_ms) for test in parsed] == [
+        ("1", "BRAKE", 100), ("2", "NO_ACTION", 100),
+    ]
+    assert errors == 0
+
+
+def test_rows_that_would_need_guessing_are_counted_not_repaired():
+    text = (
+        "tc_id,req_id,speed_kph,obstacle_m,sensor_age_ms,expected\n"
+        "1,REQ-05,B-SPEED-MIN,speed_kph=0.9,20,200,FAULT\n"   # one column too many
+        "2,REQ-02,29.9,20.0,100,No Action\n"                   # not a defined output
+        "3,REQ-02,29.9,20.0,100,NO_ACTION\n"
+    )
+    parsed, errors = parse_csv(text, SPEC.outputs)
+    assert [test.tc_id for test in parsed] == ["3"]
+    assert errors == 2
