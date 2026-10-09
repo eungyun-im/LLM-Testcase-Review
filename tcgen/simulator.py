@@ -47,6 +47,7 @@ class SimulatedLLM:
             "generate": self._generate,
             "feedback": self._feedback,
             "extend": self._extend,
+            "formalize": self._formalize,
             "cross_check": self._cross_check,
         }[kind]
         text = handler(meta)
@@ -109,6 +110,13 @@ class SimulatedLLM:
 
     def _extend(self, meta):
         return "```csv\n" + to_csv(self._additions(meta, len(meta["tests"]))) + "```\n"
+
+    def _formalize(self, meta):
+        rows = [
+            "1,C-SPEED-LOW=yes,FAULT", "2,C-SPEED-HIGH=yes,FAULT", "3,C-SENSOR-OLD=yes,FAULT",
+            "4,C-SPEED-BRAKE=yes; C-OBSTACLE=yes; C-IN-RANGE=yes,BRAKE", "5,otherwise,NO_ACTION",
+        ]
+        return "rule,when,then\n" + "\n".join(rows) + "\n"
 
     def _cross_check(self, meta):
         lines = ["tc_id,expected"]

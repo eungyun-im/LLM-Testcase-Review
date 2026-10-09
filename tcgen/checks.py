@@ -8,12 +8,14 @@ requirement text and the code under test.
 import csv
 import io
 from collections import Counter
+from dataclasses import dataclass
 
 from tcgen.generate import load_prompt
 from tcgen.metrics import boundary_coverage, output_of
 from tcgen.schema import to_csv
 
 VOTES = 3
+RULE_VOTES = 3  # decision tables requested from the model
 BATCH = 40  # tests per cross-check prompt
 MAX_SURVIVORS_REPORTED = 8
 
@@ -91,6 +93,86 @@ def cross_check(tests, llm, spec, votes=VOTES, grounded=True):
         if count > votes / 2 and winner != test.expected:
             flagged[test.tc_id] = winner
     return flagged, calls
+
+
+@dataclass(frozen=True)
+class RuleTable:
+    """Ordered decision rules over the conditions of the spec. First match wins."""
+
+    rules: tuple  # ((("C-ID", True), ...), "OUTPUT"), the last one usually with no conditions
+
+    def apply(self, spec, test):
+        """Output the table gives for a test, or None when no rule matches."""
+        facts = spec.facts(test)
+        for conditions, output in self.rules:
+            if all(facts[cid] == wanted for cid, wanted in conditions):
+                return output
+        return None
+
+
+_YES, _NO = {"yes", "true", "1"}, {"no", "false", "0"}
+
+
+def parse_rule_table(text, spec):
+    """Read a decision table from model output. None when it cannot be used as it stands.
+
+    Nothing is repaired: an unknown condition, a value other than yes or no, an
+    output that is not defined, or a missing row makes the whole table unusable.
+    """
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.replace(" ", "").lower().startswith("rule,")), None)
+    if start is None:
+        return None
+    block = [lines[start]]
+    for line in lines[start + 1:]:
+        if line.strip().startswith("```"):
+            break
+        if line.strip():
+            block.append(line)
+    reader = csv.DictReader(io.StringIO("\n".join(block)), skipinitialspace=True)
+    reader.fieldnames = [name.strip().lower() for name in reader.fieldnames]
+    known = {c["id"] for c in spec.conditions}
+    rules = []
+    for row in reader:
+        when = (row.get("when") or "").strip()
+        then = (row.get("then") or "").split("#")[0].strip().upper()
+        if then not in spec.outputs:
+            return None
+        conditions = []
+        if when.lower() not in ("", "otherwise", "else", "always"):
+            for part in when.split(";"):
+                name, _, value = part.partition("=")
+                name, value = name.strip().upper(), value.strip().lower()
+                if name not in known or value not in _YES | _NO:
+                    return None
+                conditions.append((name, value in _YES))
+        rules.append((tuple(conditions), then))
+    return RuleTable(tuple(rules)) if rules else None
+
+
+def formalize(llm, spec, votes=RULE_VOTES):
+    """Ask the model, once per vote, for the decision rules of the requirements.
+
+    The requirements are translated into a table once, instead of being
+    applied again for every test. The most common table is used.
+    Returns (RuleTable or None, calls).
+    """
+    prompt = load_prompt("formalize").format(
+        requirements=spec.requirement_text(),
+        conditions=spec.condition_table_text(),
+        outputs=", ".join(spec.outputs),
+    )
+    tables, calls = [], []
+    for _ in range(votes):
+        response = llm.complete(prompt, kind="formalize", meta={})
+        calls.append({"kind": "formalize", "prompt": prompt, "response": response})
+        table = parse_rule_table(response.text, spec)
+        if table is not None:
+            tables.append(table)
+    if not tables:
+        return None, calls
+    winner, _ = Counter(table.rules for table in tables).most_common(1)[0]
+    return next(table for table in tables if table.rules == winner), calls
 
 
 def mutation_check(tests, feedback_mutants, code_under_test):

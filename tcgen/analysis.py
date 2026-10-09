@@ -12,7 +12,8 @@ from collections import Counter, defaultdict
 
 from sut.aeb import decide as reference
 from tcgen import store
-from tcgen.checks import VOTES, _parse_votes
+from tcgen.checks import VOTES, _parse_votes, parse_rule_table
+from tcgen.mutation import probe_inputs
 from tcgen.metrics import output_of
 from tcgen.schema import TestCase, parse_csv
 from tcgen.spec import ROOT, load_spec
@@ -101,6 +102,38 @@ def triage(conn, outputs, form):
     return tally
 
 
+def rule_tables(conn, spec):
+    """How well the decision tables written by the model decide, judged on the probe inputs.
+
+    Returns {"votes": [errors per table], "chosen": [errors per chosen table], "unusable": n}.
+    Errors are the share of probe inputs on which the table disagrees with the reference.
+    The reference plays no part in the method; it only grades the table here.
+    """
+    probes = [TestCase(f"P{i}", "", *inputs, "") for i, inputs in enumerate(probe_inputs(spec))]
+    truth = [output_of(reference, probe) for probe in probes]
+
+    def errors(table):
+        return sum((table.apply(spec, p) or "NONE") != answer for p, answer in zip(probes, truth)) / len(probes)
+
+    result = {"votes": [], "chosen": [], "unusable": 0}
+    by_run = defaultdict(list)
+    for row in conn.execute("SELECT run_id, response FROM llm_calls WHERE kind = 'formalize' ORDER BY id"):
+        by_run[row["run_id"]].append(row["response"])
+    for responses in by_run.values():
+        tables = []
+        for text in responses:
+            table = parse_rule_table(text, spec)
+            if table is None:
+                result["unusable"] += 1
+            else:
+                tables.append(table)
+                result["votes"].append(errors(table))
+        if tables:
+            winner = Counter(t.rules for t in tables).most_common(1)[0][0]
+            result["chosen"].append(errors(next(t for t in tables if t.rules == winner)))
+    return result
+
+
 def ratio(part, whole):
     return f"{part / whole:.0%} ({part} of {whole})" if whole else "n/a"
 
@@ -127,6 +160,20 @@ def render(conn):
             )
         parts.append("")
 
+    tables = rule_tables(conn, spec)
+    if tables["votes"] or tables["unusable"]:
+        votes, chosen = tables["votes"], tables["chosen"]
+        parts += [
+            "## The decision tables written by the model", "",
+            "Each table is graded on the probe inputs around every boundary, against the reference. Per table, not per test.", "",
+            "| Question | Answer |", "|---|---|",
+            f"| Tables requested | {len(votes) + tables['unusable']} |",
+            f"| Unusable as written | {ratio(tables['unusable'], len(votes) + tables['unusable'])} |",
+            f"| Usable tables that decide every probe correctly | {ratio(sum(e == 0 for e in votes), len(votes))} |",
+            f"| Mean share of probes decided wrongly, per usable table | {sum(votes) / len(votes):.1%} |" if votes else "| | |",
+            f"| Chosen tables (one per run) that decide every probe correctly | {ratio(sum(e == 0 for e in chosen), len(chosen))} |",
+            "",
+        ]
     for form in ("ungrounded", "grounded"):
         tally = triage(conn, outputs, form)
         if not tally["tests"]:

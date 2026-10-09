@@ -87,6 +87,10 @@ class Spec:
                 return partition["id"]
         return None
 
+    def condition_table_text(self):
+        """The conditions with their IDs, for the prompt that asks for decision rules."""
+        return "\n".join(f"- {c['id']}: {c['text']}" for c in self.conditions)
+
     def condition_text(self):
         return "\n".join(f"- {c['text']}" for c in self.conditions)
 

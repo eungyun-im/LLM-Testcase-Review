@@ -19,7 +19,9 @@ the mistake back, there or in another row.
 
 from dataclasses import replace
 
-from tcgen.checks import boundary_check, cross_check, mutation_check, partition_check, render_feedback
+from tcgen.checks import (
+    boundary_check, cross_check, formalize, mutation_check, partition_check, render_feedback,
+)
 from tcgen.generate import load_prompt
 from tcgen.schema import parse_csv, to_csv
 
@@ -113,4 +115,12 @@ def extend(llm, spec, tests, feedback_mutants, code_under_test, enabled=ALL_CHEC
         majority, vote_calls = cross_check(tests, llm, spec, grounded="cross" in enabled)
         calls += [dict(call, round=rounds_used + 1) for call in vote_calls]
         tests = [replace(t, expected=majority[t.tc_id]) if t.tc_id in majority else t for t in tests]
+    elif tests and "rules" in enabled:
+        # The requirements are translated into a decision table once. The table, and not the
+        # model, then decides the expected result of every test.
+        table, rule_calls = formalize(llm, spec)
+        calls += [dict(call, round=rounds_used + 1) for call in rule_calls]
+        if table is not None:
+            decided = [(t, table.apply(spec, t)) for t in tests]
+            tests = [replace(t, expected=output) if output else t for t, output in decided]
     return tests, format_errors, calls, rounds_used

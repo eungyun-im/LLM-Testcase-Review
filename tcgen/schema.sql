@@ -19,7 +19,7 @@ CREATE TABLE llm_calls (
     id             INTEGER PRIMARY KEY,
     run_id         INTEGER NOT NULL REFERENCES runs(id),
     round          INTEGER NOT NULL,
-    kind           TEXT NOT NULL CHECK (kind IN ('generate', 'feedback', 'extend', 'cross_check')),
+    kind           TEXT NOT NULL CHECK (kind IN ('generate', 'feedback', 'extend', 'formalize', 'cross_check')),
     prompt         TEXT NOT NULL,
     response       TEXT NOT NULL,
     input_tokens   INTEGER NOT NULL,
