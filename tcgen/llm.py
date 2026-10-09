@@ -83,18 +83,20 @@ class OpenAICompatibleClient:
         Ollama on this machine   http://localhost:11434/v1
         a hosted service         its base URL, with the key in an environment variable
 
-    No sampling parameter is sent, so the server's defaults apply and
-    run-to-run variation is measured by repetition. The model name is recorded
+    No sampling parameter is sent unless a temperature is given, so the server's
+    defaults apply and run-to-run variation is measured by repetition. A
+    temperature that is given is recorded with every run. The model name is recorded
     with every run. A hosted model can change behind its name, a local model
     file cannot: for results that have to be reproduced, prefer the latter.
     """
 
     name = "openai-compatible"
-    effort = "none"
 
     def __init__(self, model, base_url="http://localhost:11434/v1", api_key=None,
-                 max_tokens=MAX_TOKENS, timeout_s=600, retries=5):
+                 max_tokens=MAX_TOKENS, timeout_s=600, retries=5, temperature=None):
         self.model = model
+        self.temperature = temperature
+        self.effort = "none" if temperature is None else f"temperature {temperature:g}"
         self.base_url = base_url.rstrip("/")
         self.max_tokens = max_tokens
         self._api_key = api_key
@@ -123,12 +125,15 @@ class OpenAICompatibleClient:
 
     def complete(self, prompt, kind="generate", meta=None):
         started = time.monotonic()
-        data = self._post({
+        body = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": self.max_tokens,
             "stream": False,
-        })
+        }
+        if self.temperature is not None:
+            body["temperature"] = self.temperature
+        data = self._post(body)
         choice = data["choices"][0]
         if choice.get("finish_reason") == "length":
             raise LLMError(f"output was cut off at max_tokens ({kind})")

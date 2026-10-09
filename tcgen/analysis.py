@@ -186,7 +186,8 @@ def render(conn):
 
     parts += ["## Where the expected results are wrong", "",
               "Final test sets of all repetitions, by input class.", ""]
-    for condition in ("B0", "B1", "FR", "FR-self"):
+    present = {row[0] for row in conn.execute("SELECT DISTINCT condition FROM runs")}
+    for condition in [name for name in ("B0", "B1", "FR", "FR-self", "FR-ordered", "FR-rules") if name in present]:
         tests = final_tests(conn, condition)
         if not tests:
             continue

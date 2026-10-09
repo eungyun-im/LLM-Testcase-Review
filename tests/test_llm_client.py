@@ -90,3 +90,11 @@ def test_empty_answer_is_an_error(server):
 def test_unreachable_server_is_an_error():
     with pytest.raises(LLMError, match="cannot reach"):
         OpenAICompatibleClient("m", base_url="http://127.0.0.1:1/v1", timeout_s=2).complete("x")
+
+
+def test_a_given_temperature_is_sent_and_recorded(server):
+    server["answers"] = [answer("ok")]
+    client = OpenAICompatibleClient("m", base_url=server["url"], temperature=0.3)
+    client.complete("x")
+    assert server["requests"][0][2]["temperature"] == 0.3
+    assert client.effort == "temperature 0.3"
