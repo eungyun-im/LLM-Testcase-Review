@@ -29,7 +29,7 @@ On top of that evaluation it implements **feedback refinement (FR)**: three auto
 
 The system under test is the AEB-lite decision function from [automotive-sw-qa](https://github.com/eungyun-im/automotive-sw-qa). ISO 26262-6 recommends boundary value analysis for software unit testing, which is why boundary coverage is a first-class metric here.
 
-> **Status:** the evaluation, the feedback loop, the experiment runner and the result tables are implemented and tested. Three pilots on one small local model shaped the method. A confirmation run with the design frozen (10 repetitions, same model, [results below](#results)) lowers the share of wrong expected results from 43 % to 26 %; the two comparisons fixed in advance hold. The full experiment on a stronger model, the human baseline test set and the equivalent-mutant review are open.
+> **Status:** the evaluation, the feedback loop, the experiment runner and the result tables are implemented and tested. Three pilots on one small local model shaped the method. A confirmation run with the design frozen (10 repetitions, same model, [results below](#results)) lowers the share of wrong expected results from 43 % to 26 %; the two comparisons fixed in advance hold. A change made afterwards, asking the vote one test at a time with the order of the requirements given, brings it to 9 % ([exploratory](#after-the-confirmation-run-asking-the-vote-differently-exploratory)). The full experiment on a stronger model, the human baseline test set and the equivalent-mutant review are open.
 
 ```mermaid
 flowchart LR
@@ -177,6 +177,26 @@ What the confirmation shows, and what it does not:
 - **Two parts did not show an effect.** Removing the coverage feedback or the mutation feedback left the error rate unchanged (27 %, 27 %). The coverage feedback raises boundary recall (97 % against 75 %) and the mutation feedback is within noise (83 % against 87 % mutant detection).
 - **Limits:** one model, one stateless system, no human-designed baseline yet. The parser rules and the input classes were written while reading this model's pilot output.
 
+### After the confirmation run: asking the vote differently (exploratory)
+
+The confirmation run left one in four expected results wrong, and the analysis showed why: the error rate of the method is the error of its vote. Two changes were tried afterwards. **They were chosen after seeing the confirmation data and are not part of the frozen design**; a claim about them needs a new frozen run.
+
+**The vote asked one test at a time, with the order of the requirements given** (`FR-ordered`). Instead of 40 tests in one question, each test and each of the three votes is its own short question, and the model is told to go through the requirements in the order of a `priority` list of the spec (REQ-05, REQ-03, REQ-01, otherwise REQ-02). The list is part of the structured spec and names no output. A probe on 120 tests with the same model took the votes from 70 % to 93 % right ([`vote-probe.md`](results/extension/vote-probe.md)). Then 10 repetitions: 30 runs, 1368 model calls, 21 minutes. Data: [`results/extension/qwen2.5-7b-ordered.db`](results/extension/qwen2.5-7b-ordered.db), [tables](results/extension/qwen2.5-7b-ordered.md), [analysis](results/extension/qwen2.5-7b-ordered-analysis.md).
+
+| Condition | Tests | Error rate | Detection: seeded | Detection: mutants | LLM calls |
+|---|---|---|---|---|---|
+| B1 | 33.3 ± 21.2 | 43% ± 13% | 59% ± 21% | 70% ± 15% | 1 |
+| FR (the frozen method) | 45.9 ± 20.2 | 18% ± 18% | 77% ± 20% | 88% ± 18% | 8.2 |
+| **FR, vote one test at a time, order given** | 41.4 ± 20.5 | **9% ± 5%** | 70% ± 21% | 84% ± 21% | 127.6 |
+
+- **Error rate 9 %, in every repetition at most 13 %.** Below B1 in 10 of 10 repetitions (43 % to 9 %, A12 = 0.00, p = 0.002). Below the frozen method in 8 of 10 (18 % to 9 %), which is not significant (p = 0.16): in this run the frozen method itself came out lower than in the confirmation (26 %), and its spread is large.
+- **The votes are right 89 % of the time, the majority 91 %** (frozen method in the same run: 82 % and 83 %). All three votes agree for 82 % of the tests, and those results are right in **97 %** of the cases. The remaining 18 % of the tests are the hard ones: the majority is right for only 63 % of them. This is the use that reaches the 96 % mark: take the unanimous results as they are, and send the others to a person.
+- **Detection did not improve.** 70 % and 84 % against 77 % and 88 %, within noise. Fewer wrong results did not turn into more defects found.
+- **It costs calls, not time.** 128 model calls per set instead of 8, but each answer is one word: the whole run took 21 minutes for 30 runs.
+- **The order was written by a person.** `priority` is one more piece of structure that someone has to supply, next to the 6 conditions and 7 input classes. The earlier notes already said it in words, and the model did not follow them.
+
+**The decision table** (`FR-rules`). The model writes the decision rules once, a program applies them to every test. It does not work for this model: of 30 requested tables 22 could not be used as written, none of the 8 usable ones decided all probe inputs correctly (on average 28 % of the probes were decided wrongly), and the error rate stayed at 23 % against 21 % for the frozen method in the same run (p = 0.70). `qwen2.5:3b` could not write one in 12 of 12 attempts. Data: [`results/extension/qwen2.5-7b-rules.db`](results/extension/qwen2.5-7b-rules.db). The idea needs a model that can follow a format and a priority at the same time.
+
 ### The same design on a smaller model
 
 `qwen2.5:3b` (3.1 B parameters), same commit, 10 repetitions, 80 runs, one failed (output cut off in the rewrite loop), 355 model calls, 26 minutes. Data: [`results/confirm/qwen2.5-3b.db`](results/confirm/qwen2.5-3b.db), [tables](results/confirm/qwen2.5-3b.md), [error analysis](results/confirm/qwen2.5-3b-analysis.md).
@@ -229,7 +249,7 @@ The pilots also changed the instrument. Reading the raw answers of a first trial
 
 ### Still open
 
-A stronger model (it needs a larger download or an API key), the human-designed baseline (condition H), and a second system. The tables are produced by `python -m tcgen.report`, the error analysis by `python -m tcgen.analysis`, the equal-size comparison by `python -m tcgen.equal_size`, the figure by `python -m tools.result_figures`.
+A fresh frozen run of the ordered vote, on this and on a stronger model (a stronger model needs a larger download or an API key), the human-designed baseline (condition H), and a second system. The tables are produced by `python -m tcgen.report`, the error analysis by `python -m tcgen.analysis`, the equal-size comparison by `python -m tcgen.equal_size`, the figure by `python -m tools.result_figures`.
 
 The pipeline is exercised in CI with a built-in simulator instead of a model. The simulator exists to run every code path. Its output is marked as simulated in the database and in the report, and it is not evidence about any real model.
 
@@ -320,6 +340,8 @@ The model and effort level are fixed for a run and recorded with it. No fallback
 - [x] Design of the full experiment written down before it is run
 - [x] Confirmation run with the frozen design, 10 repetitions, one model
 - [x] A smaller model: the method needs a model that can apply the rules
+- [x] Asking the vote one test at a time with the order given: 43 % to 9 % (exploratory)
+- [ ] A frozen run of that design, on more than one model
 - [ ] A stronger model
 - [ ] Human-designed baseline
 

@@ -39,6 +39,8 @@ class Spec:
     boundaries: tuple
     conditions: tuple = ()
     partitions: tuple = ()
+    priority: tuple = ()
+    fallback: str = ""
 
     def points(self):
         """Three points per boundary: value - resolution, value, value + resolution."""
@@ -87,6 +89,15 @@ class Spec:
                 return partition["id"]
         return None
 
+    def order_text(self):
+        """The order in which the requirements are applied, as an instruction. Names no output."""
+        if not self.priority:
+            return ""
+        steps = ", then ".join(self.priority)
+        text = ("Go through the requirements one at a time in this order and stop at the first one "
+                f"whose condition holds: {steps}.")
+        return text + (f" If none holds, {self.fallback} applies." if self.fallback else "")
+
     def condition_table_text(self):
         """The conditions with their IDs, for the prompt that asks for decision rules."""
         return "\n".join(f"- {c['id']}: {c['text']}" for c in self.conditions)
@@ -124,4 +135,6 @@ def load_spec(path=AEB_SPEC):
         boundaries=tuple(raw["boundaries"]),
         conditions=tuple(raw.get("conditions") or ()),
         partitions=tuple(raw.get("partitions") or ()),
+        priority=tuple((raw.get("priority") or {}).get("order") or ()),
+        fallback=(raw.get("priority") or {}).get("otherwise") or "",
     )

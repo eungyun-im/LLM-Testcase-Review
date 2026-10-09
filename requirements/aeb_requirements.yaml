@@ -94,3 +94,9 @@ partitions:
   - id: P-NEAR
     text: valid speed of at least 30 km/h, fresh sensor data, obstacle within 20 m
     when: {C-SPEED-HIGH: false, C-SENSOR-OLD: false, C-SPEED-BRAKE: true, C-OBSTACLE: true, C-IN-RANGE: true}
+
+# In which order the requirements are applied. The notes say the same in words;
+# here it is a list a program can print as a procedure. It names no output.
+priority:
+  order: [REQ-05, REQ-03, REQ-01]
+  otherwise: REQ-02

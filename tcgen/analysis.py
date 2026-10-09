@@ -12,7 +12,7 @@ from collections import Counter, defaultdict
 
 from sut.aeb import decide as reference
 from tcgen import store
-from tcgen.checks import VOTES, _parse_votes, parse_rule_table
+from tcgen.checks import VOTES, _parse_votes, parse_rule_table, votes_in
 from tcgen.mutation import probe_inputs
 from tcgen.metrics import output_of
 from tcgen.schema import TestCase, parse_csv
@@ -154,9 +154,9 @@ def final_votes(conn, outputs):
         }
         ballots = defaultdict(list)
         for call in conn.execute(
-            "SELECT response FROM llm_calls WHERE run_id = ? AND kind = 'cross_check'", (run["id"],)
+            "SELECT prompt, response FROM llm_calls WHERE run_id = ? AND kind = 'cross_check'", (run["id"],)
         ):
-            for tc_id, answer in _parse_votes(call["response"]).items():
+            for tc_id, answer in votes_in(call["prompt"], call["response"], outputs).items():
                 if tc_id in tests and answer in outputs:
                     ballots[tc_id].append(answer)
         tally = result.setdefault(run["condition"], Counter())

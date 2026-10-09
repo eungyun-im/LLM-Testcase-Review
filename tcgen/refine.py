@@ -20,7 +20,7 @@ the mistake back, there or in another row.
 from dataclasses import replace
 
 from tcgen.checks import (
-    boundary_check, cross_check, formalize, mutation_check, partition_check, render_feedback,
+    boundary_check, cross_check, formalize, mutation_check, ordered_vote, partition_check, render_feedback,
 )
 from tcgen.generate import load_prompt
 from tcgen.schema import parse_csv, to_csv
@@ -111,8 +111,11 @@ def extend(llm, spec, tests, feedback_mutants, code_under_test, enabled=ALL_CHEC
             break  # nothing usable was added: another round would ask the same again
         tests += fresh
 
-    if tests and ("cross" in enabled or "cross-self" in enabled):
-        majority, vote_calls = cross_check(tests, llm, spec, grounded="cross" in enabled)
+    if tests and ("cross" in enabled or "cross-self" in enabled or "cross-ordered" in enabled):
+        if "cross-ordered" in enabled:
+            majority, vote_calls, _ = ordered_vote(tests, llm, spec)
+        else:
+            majority, vote_calls = cross_check(tests, llm, spec, grounded="cross" in enabled)
         calls += [dict(call, round=rounds_used + 1) for call in vote_calls]
         tests = [replace(t, expected=majority[t.tc_id]) if t.tc_id in majority else t for t in tests]
     elif tests and "rules" in enabled:

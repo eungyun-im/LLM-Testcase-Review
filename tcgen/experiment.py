@@ -32,6 +32,9 @@ FR_VARIANTS = {
     "FR-mutation": (extend, ALL_CHECKS - {"mutation"}),
     # FR with expected results decided by the earlier, ungrounded cross-check
     "FR-self": (extend, (ALL_CHECKS - {"cross"}) | {"cross-self"}),
+    # Added after the confirmation run, not part of the frozen design: the vote is asked one test
+    # at a time, with the order of the requirements given
+    "FR-ordered": (extend, (ALL_CHECKS - {"cross"}) | {"cross-ordered"}),
     # Added after the confirmation run, not part of the frozen design: the model writes the
     # decision rules once, and the rules decide every expected result
     "FR-rules": (extend, (ALL_CHECKS - {"cross"}) | {"rules"}),

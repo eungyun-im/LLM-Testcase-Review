@@ -7,6 +7,7 @@ requirement text and the code under test.
 
 import csv
 import io
+import re
 from collections import Counter
 from dataclasses import dataclass
 
@@ -173,6 +174,63 @@ def formalize(llm, spec, votes=RULE_VOTES):
         return None, calls
     winner, _ = Counter(table.rules for table in tables).most_common(1)[0]
     return next(table for table in tables if table.rules == winner), calls
+
+
+def last_output(text, outputs):
+    """The last defined output named in a short answer, or None."""
+    found = re.findall("|".join(map(re.escape, outputs)), text.upper().replace(" ", "_"))
+    return found[-1] if found else None
+
+
+def votes_in(prompt, response_text, outputs):
+    """{tc_id: answer} from one stored cross-check call, whichever way it was asked."""
+    votes = _parse_votes(response_text)
+    if votes:
+        return votes
+    match = re.search(r"Case (\S+):", prompt)
+    answer = last_output(response_text, outputs)
+    return {match.group(1): answer} if match and answer else {}
+
+
+def ordered_vote(tests, llm, spec, votes=VOTES):
+    """The grounded vote, asked about one test at a time with the order of the requirements given.
+
+    One question per test and vote, so a long list does not blur the answers, and
+    the model is told in which order to go through the requirements instead of
+    having to find it in the notes. Like the other forms, it sees the decided
+    conditions and never the input values or the stated result.
+
+    Returns ({tc_id: majority} for tests whose stated result disagrees with a
+    majority, calls, {tc_id: answer} for tests on which every vote agrees).
+    """
+    template = load_prompt("cross_check_ordered")
+    ballots = {test.tc_id: [] for test in tests}
+    calls = []
+    for test in tests:
+        prompt = template.format(
+            requirements=spec.requirement_text(),
+            outputs=", ".join(spec.outputs),
+            tc_id=test.tc_id,
+            facts=spec.fact_text(test),
+            order=spec.order_text(),
+        )
+        for _ in range(votes):
+            response = llm.complete(prompt, kind="cross_check", meta={"tests": [test]})
+            calls.append({"kind": "cross_check", "prompt": prompt, "response": response})
+            answer = last_output(response.text, spec.outputs)
+            if answer:
+                ballots[test.tc_id].append(answer)
+    flagged, unanimous = {}, {}
+    for test in tests:
+        answers = ballots[test.tc_id]
+        if not answers:
+            continue
+        winner, count = Counter(answers).most_common(1)[0]
+        if count > votes / 2 and winner != test.expected:
+            flagged[test.tc_id] = winner
+        if count == votes:
+            unanimous[test.tc_id] = winner
+    return flagged, calls, unanimous
 
 
 def mutation_check(tests, feedback_mutants, code_under_test):
