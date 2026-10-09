@@ -29,7 +29,7 @@ On top of that evaluation it implements **feedback refinement (FR)**: three auto
 
 The system under test is the AEB-lite decision function from [automotive-sw-qa](https://github.com/eungyun-im/automotive-sw-qa). ISO 26262-6 recommends boundary value analysis for software unit testing, which is why boundary coverage is a first-class metric here.
 
-> **Status:** the evaluation, the feedback loop, the experiment runner and the result tables are implemented and tested. A pilot has been run on one small local model (5 repetitions, [results below](#results)). The full experiment on a stronger model, the human baseline test set and the equivalent-mutant review are open.
+> **Status:** the evaluation, the feedback loop, the experiment runner and the result tables are implemented and tested. Three pilots on one small local model shaped the method ([results below](#results)): the expected results are now decided by a grounded vote, and the error rate fell from 51 % to 20 %. The full experiment on a stronger model, the human baseline test set and the equivalent-mutant review are open.
 
 ```mermaid
 flowchart LR
@@ -64,40 +64,58 @@ Detection is measured only with **valid** tests. A wrong test fails everywhere a
 
 ## Feedback refinement
 
+A test case has two parts, and the method gives them to different workers.
+
 ```mermaid
 flowchart TB
     S[B1 test set] --> C1[Boundary check]
-    S --> C2[Cross-check]
+    S --> C2[Input class check]
     S --> C3[Mutation check]
-    C1 --> F{Any finding?}
+    C1 --> F{Any gap?}
     C2 --> F
     C3 --> F
-    F -- yes, round < 3 --> P[Feedback prompt] --> L[LLM revises the set] --> S
-    F -- no, or 3 rounds used --> E[Final test set]
+    F -- yes, round < 3 --> P[Model adds test cases<br>existing ones are kept as they are] --> S
+    F -- no, or 3 rounds used --> G[Program decides the conditions<br>of the spec for every test]
+    G --> V[Model applies the requirements<br>to those facts, 3 votes]
+    V --> E[Majority becomes<br>the expected result]
 ```
+
+**Inputs: the model adds, it never rewrites.**
 
 | Check | Uses | Finds | Feedback example |
 |---|---|---|---|
 | Boundary | Structured spec | Boundary points no test uses | `speed_kph = 30.1 (just above the B-BRAKE-SPEED boundary)` |
-| Cross-check | Requirement text | Tests whose expected result loses a 3-vote recomputation | `TC-07: an independent recomputation gives BRAKE` |
+| Input class | Structured spec | Classes of inputs with no test | `valid speed of at least 30 km/h, fresh sensor data, no obstacle detected` |
 | Mutation | Code under test | Code changes no test input would expose | ``line 28: `speed_kph >= BRAKE_SPEED_KPH` changed to `speed_kph > BRAKE_SPEED_KPH` `` |
 
-Two rules keep the comparison fair:
+**Expected results: a grounded cross-check, applied by the system.** The spec lists the atomic conditions the requirements are built from. A program decides each of them for every test, and the model sees only the outcome:
 
-- **No answer leakage.** Feedback never says which tests failed on the reference implementation. The mutation check compares the mutant with the code under test on the test inputs and ignores expected results.
+```
+TC-07: speed is below 0 km/h: no; speed is above 250 km/h: no; sensor data is 200 ms old or older: yes;
+       speed is at least 30 km/h: yes; an obstacle is detected: yes; the obstacle is within 20 m: yes
+```
+
+The model applies the requirements and their order to these facts. Three votes are taken, and the majority is written into the test set by the system. The model is not asked to correct anything.
+
+Three rules keep the comparison fair:
+
+- **No answer leakage.** Nothing in the feedback, the conditions or the input classes says what an output should be. The mutation check compares the mutant with the code under test on the test inputs and ignores expected results. Tests check each of these properties.
 - **Separate defect sets.** Mutants are split in half, balanced by mutation operator. One half is used for feedback, the other only for scoring. Hand-seeded defects are never used as feedback.
+- **The earlier forms stay as conditions.** The ungrounded cross-check (the model recomputes from the raw values) and the rewrite loop (the model returns the whole set every round) are still run, from the same starting set, so the change is measured and not assumed.
 
 ## Experiment design
 
-| Condition | What the model gets | Role |
+| Condition | What happens | Role |
 |---|---|---|
 | B0 | Requirements, one generation | Common practice |
 | B1 | Requirements, design techniques and the structured spec, one generation | Strong baseline |
-| FR | B1 output, refined with all three checks | Proposed method |
-| FR without boundary / cross-check / mutation | FR with one check removed | Contribution of each check |
+| FR | B1 output, extended with all checks, expected results by grounded vote | Proposed method |
+| FR without coverage feedback / cross-check / mutation feedback | FR with one part removed | Contribution of each part |
+| FR with ungrounded cross-check | Expected results by a vote on the raw values | Does grounding matter? |
+| FR, model rewrites the set | The earlier loop: all findings back to the model, whole set returned | Does the structure matter? |
 | H | Human-designed test set, evaluated once | Reference point |
 
-FR and its ablations start from the same B1 output in each repetition, so they are compared pairwise (Wilcoxon signed-rank). Unpaired comparisons use Mann-Whitney U. Effect size is Vargha-Delaney A12, and p-values are Holm-adjusted.
+FR and its variants start from the same B1 output in each repetition, so they are compared pairwise (Wilcoxon signed-rank). Unpaired comparisons use Mann-Whitney U. Effect size is Vargha-Delaney A12, and p-values are Holm-adjusted.
 
 **Defect versions for AEB-lite**
 
@@ -120,46 +138,43 @@ Everything a run produces is stored in SQLite: prompts, raw model output, parsed
 
 ## Results
 
-### Pilot on a small local model
+### Pilots on a small local model
 
-One model, five repetitions, to find out whether the pipeline holds up against real output and what the numbers look like. It is not the experiment: the model is small, n = 5, and no comparison below is statistically significant.
+Three runs with `qwen2.5:7b` (7.6 B parameters, quantized, run locally with Ollama), five repetitions each. They are exploration: each run changed the method, so none of them tests it. No comparison is statistically significant after correction.
 
-| | |
-|---|---|
-| Model | `qwen2.5:7b` (7.6 B parameters, 4-bit quantized), run locally with Ollama on one GPU |
-| Runs | 30 (6 conditions × 5 repetitions), none failed |
-| Model calls | 220, 247 k input and 116 k output tokens, 111 minutes |
-| Date | 2026-10-09 |
-| Data | [`results/pilot/qwen2.5-7b.db`](results/pilot/qwen2.5-7b.db): every prompt, raw answer, parsed test and detection. Tables: [`results/pilot/qwen2.5-7b.md`](results/pilot/qwen2.5-7b.md) |
+| Pilot | Method | What it showed | Data |
+|---|---|---|---|
+| 1 | Rewrite loop, ungrounded cross-check | Half of all expected results are wrong in every condition. The cross-check votes are right 45 % of the time, no better than the results they check | [`qwen2.5-7b.db`](results/pilot/qwen2.5-7b.db), [analysis](results/pilot/qwen2.5-7b-analysis.md) |
+| 2 (stopped after 13 of 35 runs) | Rewrite loop, grounded cross-check, input class check | The grounded votes flag 93 % of the wrong results, and the error rate still stays at 39 %: the rewrite brings the mistakes back | [`qwen2.5-7b-v2-partial.db`](results/pilot/qwen2.5-7b-v2-partial.db), [analysis](results/pilot/qwen2.5-7b-v2-partial-analysis.md) |
+| 3 | Additive loop, grounded vote applied by the system | Below | [`qwen2.5-7b-v3.db`](results/pilot/qwen2.5-7b-v3.db), [tables](results/pilot/qwen2.5-7b-v3.md), [analysis](results/pilot/qwen2.5-7b-v3-analysis.md) |
 
-**Metrics by condition** (mean ± standard deviation over 5 repetitions)
+**Pilot 3** (40 runs, none failed, 240 model calls, 31 minutes of model time; mean ± standard deviation over 5 repetitions)
 
-| Condition | Tests | Error rate | Boundary recall (simple / strict) | Detection: seeded | Detection: mutants | LLM calls |
-|---|---|---|---|---|---|---|
-| B0 single shot | 10.2 ± 0.4 | 45% ± 12% | 24% ± 8% / 23% ± 8% | 31% ± 12% | 42% ± 6% | 1 |
-| B1 enhanced prompt | 27.2 ± 12.5 | 50% ± 13% | 64% ± 10% / 53% ± 24% | 51% ± 16% | 53% ± 15% | 1 |
-| FR feedback refinement | 41.8 ± 13.6 | 52% ± 16% | 91% ± 17% / 72% ± 32% | 51% ± 26% | 65% ± 23% | 13 |
-| FR without boundary feedback | 45.8 ± 24.5 | 57% ± 11% | 65% ± 6% / 55% ± 14% | 49% ± 19% | 60% ± 18% | 13 |
-| FR without cross-check | 33.8 ± 4.0 | 55% ± 13% | 100% ± 0% / 76% ± 33% | 66% ± 13% | 80% ± 13% | 3.0 ± 1.0 |
-| FR without mutation feedback | 65.2 ± 35.0 | 56% ± 18% | 96% ± 6% / 67% ± 28% | 54% ± 19% | 68% ± 19% | 13 |
+| Condition | Tests | Error rate | Boundary recall (simple / strict) | Input classes | Detection: seeded | Detection: mutants | LLM calls |
+|---|---|---|---|---|---|---|---|
+| B0 single shot | 9.6 ± 1.5 | 28% ± 11% | 24% ± 9% / 19% ± 12% | 71% ± 10% | 37% ± 13% | 55% ± 10% | 1 |
+| B1 enhanced prompt | 25.8 ± 13.6 | 51% ± 10% | 59% ± 14% / 49% ± 17% | 71% ± 14% | 60% ± 26% | 63% ± 15% | 1 |
+| **FR** | 38.4 ± 11.8 | **20% ± 3%** | 93% ± 15% / 81% ± 17% | 94% ± 8% | **83% ± 6%** | **88% ± 14%** | 8.4 ± 1.5 |
+| FR without coverage feedback | 31.0 ± 11.9 | 17% ± 11% | 69% ± 12% / 61% ± 17% | 77% ± 16% | 71% ± 20% | 78% ± 20% | 6.2 ± 0.8 |
+| FR without cross-check | 37.6 ± 9.2 | 54% ± 9% | 95% ± 12% / 84% ± 20% | 94% ± 8% | 71% ± 23% | 78% ± 11% | 3.6 ± 0.5 |
+| FR without mutation feedback | 35.2 ± 10.3 | 21% ± 7% | 100% ± 0% / 88% ± 23% | 97% ± 6% | 89% ± 6% | 90% ± 14% | 6.2 ± 1.3 |
+| FR with ungrounded cross-check | 38.6 ± 12.7 | 49% ± 11% | 93% ± 15% / 77% ± 21% | 94% ± 8% | 77% ± 13% | 80% ± 13% | 7.4 ± 1.7 |
+| FR, model rewrites the set | 41.8 ± 16.8 | 55% ± 10% | 92% ± 11% / 71% ± 21% | 83% ± 16% | 66% ± 30% | 73% ± 20% | 14.2 ± 1.6 |
 
-What the pilot shows, as observations to test in the full experiment and not as findings:
+What the pilots show, as observations to test in the full experiment and not as findings:
 
-- **Half of the expected results are wrong, in every condition.** The error rate stays between 45 % and 57 %. This model chooses inputs far better than it derives the output for them, and feedback does not change that.
-- **Boundary feedback does what it is for.** Simple boundary recall goes from 24 % (B0) to 64 % (B1) to 91 % (FR), and it falls back to 65 % when the boundary check is removed. Strict recall follows at a distance: the value is there, but the other inputs often do not let that boundary decide the output.
-- **More tests did not mean more defects found.** FR quadruples the test count over B0, but detection of the seeded defects does not move from B1 to FR (51 % and 51 %), because detection only counts tests whose expected result is right.
-- **The cross-check cost most and helped least.** The variant without it used 3 calls instead of 13 and had the highest detection (66 % seeded, 80 % mutants). A plausible reason: the cross-check asks the same model to recompute an answer it already gets wrong half the time, so its votes are noise. With five repetitions this can still be chance (p = 0.125 before correction).
-- **One defect was almost never found.** F5, "no obstacle" treated as distance zero, was detected in 1 of 15 runs of B0, B1 and FR. Only 99 of the 1120 generated tests have no obstacle at all.
+- **The errors are in the expected results, and the model cannot check itself.** Extending B1 without a cross-check leaves the error rate at 54 %, and a vote on the raw values leaves it at 49 %. In pilot 1 the model's votes were right 45 % of the time.
+- **Grounding the vote changes that.** With the conditions decided by a program, single votes were right 85 % of the time, unanimous results 95 %, and the error rate of the test set fell to 20 %. In all five repetitions FR was below B1, below the ungrounded vote and below the rewrite loop (A12 = 0.00, p = 0.062, which is the smallest value five pairs can give).
+- **An accurate check is not enough if the model does the fixing.** The rewrite loop received the same grounded findings and ended at 55 %, with the most calls (14.2).
+- **Coverage feedback finds the missing cases.** The defect that only shows without an obstacle was detected in 0 of 5 runs of B0, 2 of B1 and 4 of FR. In pilot 1 it was found once in 15 runs.
+- **The mutation feedback did not earn its place here.** Removing it changed nothing measurable (89 % and 90 % detection without it).
+- **What is still wrong is concentrated.** 22 of the 39 wrong results of FR are in one input class, valid speed with sensor data too old: the facts are given, and the model applies the order of the requirements wrongly.
 
-The pilot also changed the instrument. Reading the raw answers of a first trial run showed two cases where the parser dropped usable tables: a blank line after the header, and a remark after the expected result. Both are now accepted, the rules for what is forgiven and what is counted as a format error are written down in [`tcgen/schema.py`](tcgen/schema.py), and the trial run was discarded. The numbers above come from one run with the final rules.
+The pilots also changed the instrument. Reading the raw answers of a first trial showed two cases where the parser dropped usable tables. The rules for what is forgiven and what is counted as a format error are written down in [`tcgen/schema.py`](tcgen/schema.py), and that trial was discarded. Where a result is wrong, and how well each form of the cross-check points at it, is computed from the stored data by `python -m tcgen.analysis`.
 
 ### Full experiment
 
-Not run yet. It needs a stronger model, 10 repetitions and the human baseline (condition H). The tables are produced by `python -m tcgen.report`:
-
-- **Table 1.** Metrics by condition, as above, with condition H.
-- **Table 2.** Seeded defects detected, one row per defect F1 to F7.
-- **Table 3.** Statistical comparisons (test, means, A12, p, Holm-adjusted p).
+Not run yet. Its design is fixed in advance in [`docs/experiment_plan.md`](docs/experiment_plan.md): three models of different size, at least 10 repetitions, a human-designed baseline, and a comparison at equal test counts. The tables are produced by `python -m tcgen.report`.
 
 The pipeline is exercised in CI with a built-in simulator instead of a model. The simulator exists to run every code path. Its output is marked as simulated in the database and in the report, and it is not evidence about any real model.
 
@@ -177,8 +192,9 @@ llm-testcase-review/
 │   ├── schema.py        Test case format and tolerant CSV parsing
 │   ├── metrics.py       Error rate, boundary recall, detection rate
 │   ├── mutation.py      Mutant generation and the feedback / evaluation split
-│   ├── checks.py        Boundary check, cross-check, mutation check
-│   ├── refine.py        Feedback refinement loop
+│   ├── checks.py        Boundary, input class and mutation check, cross-check (grounded and not)
+│   ├── refine.py        Additive refinement, and the earlier rewrite loop
+│   ├── analysis.py      Where results are wrong, how well the cross-check finds them
 │   ├── generate.py      B0 and B1 generation
 │   ├── llm.py           LLM clients: Claude, and any OpenAI-compatible server (local or hosted)
 │   ├── simulator.py     Stand-in client for pipeline tests
@@ -237,12 +253,14 @@ The model and effort level are fixed for a run and recorded with it. No fallback
 - [x] Execution-based metrics: error rate, boundary recall (simple and strict), detection rate
 - [x] Mutant generation with a feedback / evaluation split
 - [x] Hand-seeded defect versions
-- [x] Boundary check, cross-check and mutation check
-- [x] Feedback refinement loop with ablations
+- [x] Boundary, input class and mutation check
+- [x] Grounded cross-check: conditions decided by a program, requirements applied by the model
+- [x] Additive refinement with ablations, and the earlier forms as comparison conditions
 - [x] Experiment runner, SQLite store, result tables and statistics
 - [ ] Human baseline test set, designed before looking at the defects
 - [ ] Equivalent-mutant review
-- [x] Pilot on a real model (small local model, 5 repetitions)
+- [x] Three pilots on a small local model, with error analysis
+- [x] Design of the full experiment written down before it is run
 - [ ] Full run on a stronger model, with results published here
 
 **Next**

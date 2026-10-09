@@ -22,3 +22,15 @@ Mutants judged equivalent, removed from the detection-rate denominator.
 ## results.db
 
 Created by `python -m tcgen.experiment`. Not committed.
+
+## `human/aeb_baseline_draft.csv`
+
+A test set of 33 cases drafted by an AI assistant (Claude) on 2026-10-09 by applying
+boundary value analysis, equivalence partitioning and a decision table to the
+requirements. It is **not** the human baseline, and the experiment does not read it:
+the assistant also wrote the defect versions and knew them. It is a starting point
+for the person who designs the baseline. Review every row against the requirements,
+change what you would design differently, and only then copy it to `aeb_baseline.csv`.
+
+For reference, the draft scores 0 % error rate, 100 % boundary recall, 100 % input
+class coverage and 100 % detection of both defect sets.
