@@ -9,7 +9,7 @@ from sut.defects import SEEDED
 from tcgen import stats, store
 from tcgen.spec import ROOT
 
-ORDER = ["B0", "B1", "FR", "FR-coverage", "FR-boundary", "FR-cross", "FR-mutation", "FR-self", "H"]
+ORDER = ["B0", "B1", "FR", "FR-coverage", "FR-boundary", "FR-cross", "FR-mutation", "FR-self", "FR-rewrite", "H"]
 LABELS = {
     "B0": "B0 single shot",
     "B1": "B1 enhanced prompt",
@@ -19,6 +19,7 @@ LABELS = {
     "FR-cross": "FR without cross-check",
     "FR-mutation": "FR without mutation feedback",
     "FR-self": "FR with ungrounded cross-check",
+    "FR-rewrite": "FR, model rewrites the set",
     "H": "H human design",
 }
 COMPARISONS = [
@@ -30,6 +31,7 @@ COMPARISONS = [
     ("FR", "FR-cross", True),
     ("FR", "FR-mutation", True),
     ("FR", "FR-self", True),
+    ("FR", "FR-rewrite", True),
 ]
 MAIN_METRICS = ["error_rate", "detection_seeded", "detection_mutants"]
 SIMULATED_WARNING = (

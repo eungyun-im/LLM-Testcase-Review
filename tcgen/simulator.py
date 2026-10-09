@@ -46,6 +46,7 @@ class SimulatedLLM:
         handler = {
             "generate": self._generate,
             "feedback": self._feedback,
+            "extend": self._extend,
             "cross_check": self._cross_check,
         }[kind]
         text = handler(meta)
@@ -84,10 +85,14 @@ class SimulatedLLM:
             else t
             for t in tests
         ]
-        number = len(tests)
+        tests += self._additions(meta, len(tests))
+        return "```csv\n" + to_csv(tests) + "```\n"
+
+    def _additions(self, meta, number):
+        """Tests that answer the findings in meta, numbered after `number`."""
+        added = []
         for point in meta.get("missing", []):
-            number += 1
-            tests.append(self._case(number, "REQ-01", self._point_inputs(point), 0.05))
+            added.append(self._case(number + len(added) + 1, "REQ-01", self._point_inputs(point), 0.05))
         for partition in meta.get("classes", []):
             probe = next(
                 (p for p in self._probes
@@ -95,14 +100,15 @@ class SimulatedLLM:
                 None,
             )
             if probe is not None:
-                number += 1
-                tests.append(self._case(number, "REQ-01", probe, 0.05))
+                added.append(self._case(number + len(added) + 1, "REQ-01", probe, 0.05))
         for mutant in meta.get("survivors", []):
             probe = distinguishing_input(mutant.load(), self.reference, self._probes)
             if probe is not None and self.rng.random() < 0.7:
-                number += 1
-                tests.append(self._case(number, "REQ-01", probe, 0.05))
-        return "```csv\n" + to_csv(tests) + "```\n"
+                added.append(self._case(number + len(added) + 1, "REQ-01", probe, 0.05))
+        return added
+
+    def _extend(self, meta):
+        return "```csv\n" + to_csv(self._additions(meta, len(meta["tests"]))) + "```\n"
 
     def _cross_check(self, meta):
         lines = ["tc_id,expected"]

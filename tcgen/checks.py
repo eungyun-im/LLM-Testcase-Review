@@ -14,6 +14,7 @@ from tcgen.metrics import boundary_coverage, output_of
 from tcgen.schema import to_csv
 
 VOTES = 3
+BATCH = 40  # tests per cross-check prompt
 MAX_SURVIVORS_REPORTED = 8
 
 
@@ -60,24 +61,27 @@ def cross_check(tests, llm, spec, votes=VOTES, grounded=True):
     Returns ({tc_id: majority result} for tests whose stated result disagrees
     with a majority, calls). A test with no majority is left alone.
     """
-    if grounded:
-        prompt = load_prompt("cross_check_grounded").format(
-            requirements=spec.requirement_text(),
-            outputs=", ".join(spec.outputs),
-            tests="\n".join(f"{t.tc_id}: {spec.fact_text(t)}" for t in tests),
-        )
-    else:
-        prompt = load_prompt("cross_check").format(
-            requirements=spec.requirement_text(),
-            inputs=spec.input_text(),
-            outputs=", ".join(spec.outputs),
-            tests=to_csv(tests, with_expected=False),
-        )
-    ballots, calls = [], []
-    for _ in range(votes):
-        response = llm.complete(prompt, kind="cross_check", meta={"tests": tests})
-        ballots.append(_parse_votes(response.text))
-        calls.append({"kind": "cross_check", "prompt": prompt, "response": response})
+    ballots = [{} for _ in range(votes)]
+    calls = []
+    for start in range(0, len(tests), BATCH):
+        batch = tests[start:start + BATCH]
+        if grounded:
+            prompt = load_prompt("cross_check_grounded").format(
+                requirements=spec.requirement_text(),
+                outputs=", ".join(spec.outputs),
+                tests="\n".join(f"{t.tc_id}: {spec.fact_text(t)}" for t in batch),
+            )
+        else:
+            prompt = load_prompt("cross_check").format(
+                requirements=spec.requirement_text(),
+                inputs=spec.input_text(),
+                outputs=", ".join(spec.outputs),
+                tests=to_csv(batch, with_expected=False),
+            )
+        for ballot in ballots:
+            response = llm.complete(prompt, kind="cross_check", meta={"tests": batch})
+            ballot.update(_parse_votes(response.text))
+            calls.append({"kind": "cross_check", "prompt": prompt, "response": response})
     flagged = {}
     for test in tests:
         answers = [b[test.tc_id] for b in ballots if b.get(test.tc_id) in spec.outputs]

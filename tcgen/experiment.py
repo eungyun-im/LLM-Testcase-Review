@@ -17,20 +17,23 @@ from sut.defects import SEEDED
 from tcgen import metrics, mutation, store
 from tcgen.generate import generate
 from tcgen.llm import AnthropicClient, DEFAULT_EFFORT, DEFAULT_MODEL, LLMError, OpenAICompatibleClient
-from tcgen.refine import ALL_CHECKS, refine
+from tcgen.refine import ALL_CHECKS, extend, refine
 from tcgen.schema import load_csv_file
 from tcgen.simulator import SimulatedLLM
 from tcgen.spec import ROOT, load_spec
 
 HUMAN_BASELINE = ROOT / "data" / "human" / "aeb_baseline.csv"
+# name: (procedure, enabled checks)
 FR_VARIANTS = {
-    "FR": ALL_CHECKS,
+    "FR": (extend, ALL_CHECKS),
     # Ablations: FR with one kind of feedback removed
-    "FR-coverage": ALL_CHECKS - {"boundary", "partition"},
-    "FR-cross": ALL_CHECKS - {"cross"},
-    "FR-mutation": ALL_CHECKS - {"mutation"},
-    # FR with the cross-check in its earlier, ungrounded form
-    "FR-self": (ALL_CHECKS - {"cross"}) | {"cross-self"},
+    "FR-coverage": (extend, ALL_CHECKS - {"boundary", "partition"}),
+    "FR-cross": (extend, ALL_CHECKS - {"cross"}),
+    "FR-mutation": (extend, ALL_CHECKS - {"mutation"}),
+    # FR with expected results decided by the earlier, ungrounded cross-check
+    "FR-self": (extend, (ALL_CHECKS - {"cross"}) | {"cross-self"}),
+    # The earlier procedure: the model rewrites the whole set every round
+    "FR-rewrite": (refine, ALL_CHECKS),
 }
 CONDITIONS = ["B0", "B1", *FR_VARIANTS]
 
@@ -124,9 +127,10 @@ def run_repetition(conn, llm, context, repetition, conditions=CONDITIONS):
 
     for name in variants:
         def produce(name=name):
-            tests, errors, calls, rounds = refine(
+            procedure, enabled = FR_VARIANTS[name]
+            tests, errors, calls, rounds = procedure(
                 llm, context.spec, b1_tests, context.feedback_mutants, context.reference,
-                enabled=FR_VARIANTS[name],
+                enabled=enabled,
             )
             return evaluate(context, tests, errors, [*b1_calls, *calls], rounds)
 

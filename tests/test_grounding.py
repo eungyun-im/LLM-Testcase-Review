@@ -6,7 +6,7 @@ from tcgen.checks import cross_check, partition_check, render_feedback
 from tcgen.experiment import FR_VARIANTS
 from tcgen.llm import ScriptedClient
 from tcgen.metrics import partition_coverage
-from tcgen.refine import refine
+from tcgen.refine import extend, refine
 from tcgen.schema import TestCase, to_csv
 from tcgen.spec import load_spec
 
@@ -96,8 +96,75 @@ def test_refine_asks_for_missing_classes():
 
 
 def test_variants_differ_in_exactly_what_their_names_say():
-    full = FR_VARIANTS["FR"]
-    assert full - FR_VARIANTS["FR-coverage"] == {"boundary", "partition"}
-    assert full - FR_VARIANTS["FR-cross"] == {"cross"}
-    assert full - FR_VARIANTS["FR-mutation"] == {"mutation"}
-    assert FR_VARIANTS["FR-self"] == (full - {"cross"}) | {"cross-self"}
+    procedure, full = FR_VARIANTS["FR"]
+    assert procedure is extend
+    assert full - FR_VARIANTS["FR-coverage"][1] == {"boundary", "partition"}
+    assert full - FR_VARIANTS["FR-cross"][1] == {"cross"}
+    assert full - FR_VARIANTS["FR-mutation"][1] == {"mutation"}
+    assert FR_VARIANTS["FR-self"][1] == (full - {"cross"}) | {"cross-self"}
+    assert FR_VARIANTS["FR-rewrite"] == (refine, full)
+    assert all(procedure is extend for name, (procedure, _) in FR_VARIANTS.items() if name != "FR-rewrite")
+
+
+# The additive procedure
+
+
+def addition(*rows):
+    header = "tc_id,req_id,speed_kph,obstacle_m,sensor_age_ms,expected\n"
+    return "```csv\n" + header + "\n".join(rows) + "\n```"
+
+
+def test_extend_keeps_existing_tests_and_appends_new_ones():
+    start = [case("T1", 40.0, 10.0, 50, "BRAKE")]
+    llm = ScriptedClient([addition("X,REQ-02,10.0,10.0,50,NO_ACTION", "Y,REQ-01,40.0,10.0,50,FAULT")])
+    result, errors, calls, rounds = extend(llm, SPEC, start, [], decide, enabled={"partition"}, max_rounds=1)
+    assert result[0] == start[0]                         # untouched, same object content
+    assert [t.tc_id for t in result] == ["T1", "R1-01"]  # the repeated input was not added again
+    assert (errors, rounds, [c["kind"] for c in calls]) == (0, 1, ["extend"])
+
+
+def test_extend_prompt_shows_inputs_but_not_the_existing_expected_results():
+    start = [case("T1", 40.0, 10.0, 50, "BRAKE")]
+    llm = ScriptedClient([addition("X,REQ-02,10.0,10.0,50,NO_ACTION")])
+    extend(llm, SPEC, start, [], decide, enabled={"partition"}, max_rounds=1)
+    listing = llm.calls[0][1].split("Inputs of the existing test cases:")[1].split("Findings:")[0]
+    assert "T1,REQ-01,40,10,50" in listing and "BRAKE" not in listing
+
+
+def test_extend_stops_when_nothing_usable_is_added():
+    start = [case("T1", 40.0, 10.0, 50, "BRAKE")]
+    llm = ScriptedClient(["I have nothing to add."] * 3)
+    result, _, calls, rounds = extend(llm, SPEC, start, [], decide, enabled={"partition"})
+    assert result == start and rounds == 1 and len(calls) == 1
+
+
+def test_extend_applies_the_majority_of_the_final_vote_itself():
+    # Both stated results are wrong. The model is never asked to correct them.
+    start = [case("T1", 40.0, 10.0, 50, "NO_ACTION"), case("T2", 10.0, 10.0, 50, "BRAKE")]
+    ballots = [
+        "tc_id,expected\nT1,BRAKE\nT2,NO_ACTION",
+        "tc_id,expected\nT1,BRAKE\nT2,FAULT",
+        "tc_id,expected\nT1,FAULT\nT2,NO_ACTION",
+    ]
+    llm = ScriptedClient(ballots)
+    result, _, calls, rounds = extend(llm, SPEC, start, [], decide, enabled={"cross"})
+    assert [t.expected for t in result] == ["BRAKE", "NO_ACTION"]
+    assert rounds == 0 and [c["kind"] for c in calls] == ["cross_check"] * 3
+    assert [c["round"] for c in calls] == [1, 1, 1]
+
+
+def test_a_result_without_a_majority_is_left_as_stated():
+    start = [case("T1", 40.0, 10.0, 50, "NO_ACTION")]
+    llm = ScriptedClient(["tc_id,expected\nT1,BRAKE", "tc_id,expected\nT1,FAULT", "tc_id,expected\nT1,NO_ACTION"])
+    result, _, _, _ = extend(llm, SPEC, start, [], decide, enabled={"cross"})
+    assert result[0].expected == "NO_ACTION"
+
+
+def test_cross_check_votes_in_batches():
+    tests = [case(f"T{i}", 40.0, 10.0, 50, "BRAKE") for i in range(45)]
+    first = "tc_id,expected\n" + "\n".join(f"T{i},BRAKE" for i in range(40))
+    second = "tc_id,expected\n" + "\n".join(f"T{i},FAULT" for i in range(40, 45))
+    llm = ScriptedClient([first] * 3 + [second] * 3)
+    flagged, calls = cross_check(tests, llm, SPEC)
+    assert len(calls) == 6
+    assert flagged == {f"T{i}": "FAULT" for i in range(40, 45)}
