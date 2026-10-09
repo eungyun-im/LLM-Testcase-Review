@@ -50,3 +50,9 @@ class coverage, calls per final test set, the ablations.
 - One system, stateless.
 - The structured spec (6 conditions, 7 input classes) was written by the person who also wrote the reference implementation.
 - The parser rules were set while reading the pilot model's output.
+
+## Log
+
+- **2026-10-09, confirmation run on `qwen2.5:7b`.** Run at commit `e8f63dd` with the design above, 10 repetitions, 80 runs, none failed. Results in `results/confirm/`. H1 and H2 hold: error rate 25.5 % against 46.6 % (p = 0.006, Holm 0.012) and against 54.5 % (p = 0.014, Holm 0.014). Holm was applied over the two comparisons that exist for one model; the third primary comparison (H3) needs several models. The pilots had overstated the effect (20 %).
+- **2026-10-09, `qwen2.5:3b`.** A second model of the plan, started after the first confirmation run, same commit, 10 repetitions.
+- Added after the confirmation run, outside the frozen design and reported as such: `tcgen/equal_size.py` (the equal-size comparison named above) and `tools/result_figures.py`.

@@ -29,7 +29,7 @@ On top of that evaluation it implements **feedback refinement (FR)**: three auto
 
 The system under test is the AEB-lite decision function from [automotive-sw-qa](https://github.com/eungyun-im/automotive-sw-qa). ISO 26262-6 recommends boundary value analysis for software unit testing, which is why boundary coverage is a first-class metric here.
 
-> **Status:** the evaluation, the feedback loop, the experiment runner and the result tables are implemented and tested. Three pilots on one small local model shaped the method ([results below](#results)): the expected results are now decided by a grounded vote, and the error rate fell from 51 % to 20 %. The full experiment on a stronger model, the human baseline test set and the equivalent-mutant review are open.
+> **Status:** the evaluation, the feedback loop, the experiment runner and the result tables are implemented and tested. Three pilots on one small local model shaped the method. A confirmation run with the design frozen (10 repetitions, same model, [results below](#results)) lowers the share of wrong expected results from 43 % to 26 %; the two comparisons fixed in advance hold. The full experiment on a stronger model, the human baseline test set and the equivalent-mutant review are open.
 
 ```mermaid
 flowchart LR
@@ -138,6 +138,44 @@ Everything a run produces is stored in SQLite: prompts, raw model output, parsed
 
 ## Results
 
+### Confirmation run, design frozen
+
+The method and the parser rules were frozen at commit `e8f63dd`, the plan in [`docs/experiment_plan.md`](docs/experiment_plan.md) was written before this run, and nothing was changed while it ran. `qwen2.5:7b` (7.6 B parameters, quantized, local with Ollama), 10 repetitions of 8 conditions: 80 runs, none failed, 526 model calls, 74 minutes of model time. Data: [`results/confirm/qwen2.5-7b.db`](results/confirm/qwen2.5-7b.db), tables [`.md`](results/confirm/qwen2.5-7b.md), error analysis [`-analysis.md`](results/confirm/qwen2.5-7b-analysis.md), equal-size comparison [`-equal-size.md`](results/confirm/qwen2.5-7b-equal-size.md).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/error-rate-qwen2.5-7b-dark.svg">
+  <img src="docs/img/error-rate-qwen2.5-7b-light.svg" alt="Share of wrong expected results per repetition for five conditions: B1 43 percent, extended with results as written 48, ungrounded vote 47, rewrite loop 55, grounded vote 26" width="760">
+</picture>
+
+| Condition | Tests | Error rate | Detection: seeded | Detection: mutants | LLM calls |
+|---|---|---|---|---|---|
+| B0 single shot | 9.1 ± 1.5 | 32% ± 10% | 44% ± 16% | 53% ± 12% | 1 |
+| B1 enhanced prompt | 26.7 ± 9.7 | 43% ± 21% | 57% ± 19% | 58% ± 16% | 1 |
+| **FR** | 38.1 ± 13.5 | **26% ± 15%** | **70% ± 21%** | **87% ± 18%** | 7.7 ± 2.3 |
+| FR without coverage feedback | 32.0 ± 8.0 | 27% ± 15% | 70% ± 17% | 79% ± 16% | 6.0 ± 1.7 |
+| FR without cross-check | 36.6 ± 6.4 | 48% ± 17% | 64% ± 15% | 69% ± 14% | 3.1 ± 0.7 |
+| FR without mutation feedback | 35.4 ± 10.0 | 27% ± 16% | 71% ± 16% | 83% ± 18% | 7.1 ± 1.9 |
+| FR with ungrounded cross-check | 38.2 ± 14.0 | 47% ± 14% | 69% ± 23% | 74% ± 15% | 7.1 ± 1.9 |
+| FR, model rewrites the set | 63.7 ± 18.3 | 55% ± 22% | 57% ± 29% | 67% ± 25% | 19.6 ± 6.6 |
+
+**The two comparisons fixed in advance** (paired Wilcoxon on the error rate, Holm over the two)
+
+| | Error rate | A12 | p | p (Holm) | FR lower in |
+|---|---|---|---|---|---|
+| H1: grounded vote vs vote on the raw values | 25.5% vs 46.6% | 0.15 | 0.006 | 0.012 | 9 of 10 repetitions |
+| H2: system applies the vote vs model rewrites the set | 25.5% vs 54.5% | 0.12 | 0.014 | 0.014 | 9 of 10 repetitions |
+
+The plan names a third primary comparison per model; here it is the effect across models (H3), which needs the other models and is still open.
+
+What the confirmation shows, and what it does not:
+
+- **Both predictions held** with the design frozen, for this model. Extending the set without any check (48 %) or with the ungrounded vote (47 %) does not lower the error rate; the grounded vote does (26 %); giving the model the same grounded findings but letting it rewrite the set gives 55 %.
+- **The effect is smaller than the pilots suggested.** The third pilot showed 20 % ± 3 %. With 10 repetitions it is 26 % ± 15 %, and one repetition is at 55 %. A single vote was right 71 % of the time (pilot: 85 %), and results confirmed by all three votes 78 % (pilot: 95 %). The pilot overstated the method, which is the reason the design was frozen before this run.
+- **It is not a solution to the problem.** One in four expected results is still wrong. 64 of the 98 wrong results of FR are in one input class, valid speed with sensor data too old, where the model states `BRAKE` and the requirements call for `FAULT`: the facts are given, and the priority between the requirements is still applied wrongly.
+- **Detection improves, with less certainty.** Mutant detection 58 % → 87 % (p = 0.002; 0.041 after Holm over all 21 comparisons of the report), seeded defects 57 % → 70 % (p = 0.051, not significant). At equal test counts the gain shrinks but stays: seeded 57 % → 62 %, mutants 58 % → 78 %. The rewrite loop falls below the starting point at equal size (38 % and 52 %): its extra tests were mostly wrong.
+- **Two parts did not show an effect.** Removing the coverage feedback or the mutation feedback left the error rate unchanged (27 %, 27 %). The coverage feedback raises boundary recall (97 % against 75 %) and the mutation feedback is within noise (83 % against 87 % mutant detection).
+- **Limits:** one model, one stateless system, no human-designed baseline yet. The parser rules and the input classes were written while reading this model's pilot output.
+
 ### Pilots on a small local model
 
 Three runs with `qwen2.5:7b` (7.6 B parameters, quantized, run locally with Ollama), five repetitions each. They are exploration: each run changed the method, so none of them tests it. No comparison is statistically significant after correction.
@@ -172,9 +210,9 @@ What the pilots show, as observations to test in the full experiment and not as 
 
 The pilots also changed the instrument. Reading the raw answers of a first trial showed two cases where the parser dropped usable tables. The rules for what is forgiven and what is counted as a format error are written down in [`tcgen/schema.py`](tcgen/schema.py), and that trial was discarded. Where a result is wrong, and how well each form of the cross-check points at it, is computed from the stored data by `python -m tcgen.analysis`.
 
-### Full experiment
+### Still open
 
-Not run yet. Its design is fixed in advance in [`docs/experiment_plan.md`](docs/experiment_plan.md): three models of different size, at least 10 repetitions, a human-designed baseline, and a comparison at equal test counts. The tables are produced by `python -m tcgen.report`.
+The other models of [`docs/experiment_plan.md`](docs/experiment_plan.md) (a smaller one is running, a stronger one needs another download or an API key), the human-designed baseline (condition H), and a second system. The tables are produced by `python -m tcgen.report`, the error analysis by `python -m tcgen.analysis`, the equal-size comparison by `python -m tcgen.equal_size`, the figure by `python -m tools.result_figures`.
 
 The pipeline is exercised in CI with a built-in simulator instead of a model. The simulator exists to run every code path. Its output is marked as simulated in the database and in the report, and it is not evidence about any real model.
 
@@ -195,6 +233,7 @@ llm-testcase-review/
 │   ├── checks.py        Boundary, input class and mutation check, cross-check (grounded and not)
 │   ├── refine.py        Additive refinement, and the earlier rewrite loop
 │   ├── analysis.py      Where results are wrong, how well the cross-check finds them
+│   ├── equal_size.py    Detection at equal test counts
 │   ├── generate.py      B0 and B1 generation
 │   ├── llm.py           LLM clients: Claude, and any OpenAI-compatible server (local or hosted)
 │   ├── simulator.py     Stand-in client for pipeline tests
@@ -205,7 +244,8 @@ llm-testcase-review/
 ├── data/
 │   ├── human/           Human baseline test set (condition H)
 │   └── mutants/         Equivalent-mutant decisions
-├── results/pilot/       Stored runs and tables of the pilot
+├── results/pilot/       The three pilots (exploration)
+├── results/confirm/     The confirmation run with the frozen design
 └── tests/
 ```
 
@@ -261,7 +301,9 @@ The model and effort level are fixed for a run and recorded with it. No fallback
 - [ ] Equivalent-mutant review
 - [x] Three pilots on a small local model, with error analysis
 - [x] Design of the full experiment written down before it is run
-- [ ] Full run on a stronger model, with results published here
+- [x] Confirmation run with the frozen design, 10 repetitions, one model
+- [ ] The other models of the plan
+- [ ] Human-designed baseline
 
 **Next**
 
